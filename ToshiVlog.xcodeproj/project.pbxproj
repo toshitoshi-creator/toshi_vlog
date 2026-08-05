@@ -1,0 +1,379 @@
+// !$*UTF8*$!
+{
+	archiveVersion = 1;
+	classes = {
+	};
+	objectVersion = 56;
+	objects = {
+
+/* Begin PBXBuildFile section */
+		89627FBC59FC85787FE3928E /* ToshiVlogApp.swift in Sources */ = {isa = PBXBuildFile; fileRef = B9D2EFA83BA43EC14DB4C1ED /* ToshiVlogApp.swift */; };
+		51767C87A3E66A9C7C244F3F /* ContentView.swift in Sources */ = {isa = PBXBuildFile; fileRef = 2BAAB60DCFB20242F2381D69 /* ContentView.swift */; };
+		DDA0E1359E68ECC7F99DF446 /* VideoItem.swift in Sources */ = {isa = PBXBuildFile; fileRef = 3604DDE8D6CAC2B049F68B73 /* VideoItem.swift */; };
+		14C1DC6552CEC8F48BC3EE22 /* CameraViewModel.swift in Sources */ = {isa = PBXBuildFile; fileRef = 1364F4D9795F5CAAABD9D179 /* CameraViewModel.swift */; };
+		F52872944FE9011BECE81C0A /* VideoLibrary.swift in Sources */ = {isa = PBXBuildFile; fileRef = 20E9C016A979EB4A198C47E2 /* VideoLibrary.swift */; };
+		6DF1B863D3DBF8C16515D2DA /* CameraView.swift in Sources */ = {isa = PBXBuildFile; fileRef = D86A480E2EE1F4E65F4F3D27 /* CameraView.swift */; };
+		EA764BE1CD1C1AFE1A84E877 /* CameraPreviewView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F5FB10B8EE17B3C2D099AE29 /* CameraPreviewView.swift */; };
+		8F8BDD35ACF487AA97D85B81 /* VideoListView.swift in Sources */ = {isa = PBXBuildFile; fileRef = EA0B1D977AA65FA5A4F94C1F /* VideoListView.swift */; };
+		3EA2E89D8DEECA1B6367AE8A /* VideoRowView.swift in Sources */ = {isa = PBXBuildFile; fileRef = F0EE9ACA5794650805071E53 /* VideoRowView.swift */; };
+		0A47F5AB3599E6D9A21DEC6C /* VideoPlayerScreen.swift in Sources */ = {isa = PBXBuildFile; fileRef = 239AFB3A4960A937780897F3 /* VideoPlayerScreen.swift */; };
+		D68EF449E4EB231B827B6810 /* Assets.xcassets in Resources */ = {isa = PBXBuildFile; fileRef = B28CEB9E80846145A6C08471 /* Assets.xcassets */; };
+/* End PBXBuildFile section */
+
+/* Begin PBXFileReference section */
+		228DC3E9506EA1DBD07CE717 /* ToshiVlog.app */ = {isa = PBXFileReference; explicitFileType = wrapper.application; includeInIndex = 0; path = ToshiVlog.app; sourceTree = BUILT_PRODUCTS_DIR; };
+		B9D2EFA83BA43EC14DB4C1ED /* ToshiVlogApp.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ToshiVlogApp.swift; sourceTree = "<group>"; };
+		2BAAB60DCFB20242F2381D69 /* ContentView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = ContentView.swift; sourceTree = "<group>"; };
+		3604DDE8D6CAC2B049F68B73 /* VideoItem.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoItem.swift; sourceTree = "<group>"; };
+		1364F4D9795F5CAAABD9D179 /* CameraViewModel.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraViewModel.swift; sourceTree = "<group>"; };
+		20E9C016A979EB4A198C47E2 /* VideoLibrary.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoLibrary.swift; sourceTree = "<group>"; };
+		D86A480E2EE1F4E65F4F3D27 /* CameraView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraView.swift; sourceTree = "<group>"; };
+		F5FB10B8EE17B3C2D099AE29 /* CameraPreviewView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = CameraPreviewView.swift; sourceTree = "<group>"; };
+		EA0B1D977AA65FA5A4F94C1F /* VideoListView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoListView.swift; sourceTree = "<group>"; };
+		F0EE9ACA5794650805071E53 /* VideoRowView.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoRowView.swift; sourceTree = "<group>"; };
+		239AFB3A4960A937780897F3 /* VideoPlayerScreen.swift */ = {isa = PBXFileReference; lastKnownFileType = sourcecode.swift; path = VideoPlayerScreen.swift; sourceTree = "<group>"; };
+		B28CEB9E80846145A6C08471 /* Assets.xcassets */ = {isa = PBXFileReference; lastKnownFileType = folder.assetcatalog; path = Assets.xcassets; sourceTree = "<group>"; };
+		DD110EDBEDC6B49F9C07C78D /* Info.plist */ = {isa = PBXFileReference; lastKnownFileType = text.plist.xml; path = Info.plist; sourceTree = "<group>"; };
+/* End PBXFileReference section */
+
+/* Begin PBXFrameworksBuildPhase section */
+		FC11D0DD9A904C9972E4326E /* Frameworks */ = {
+			isa = PBXFrameworksBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXFrameworksBuildPhase section */
+
+/* Begin PBXGroup section */
+		920F816EEC1B9BBF35F1FDF9 = {
+			isa = PBXGroup;
+			children = (
+				825061D2E7AD5FB975BC2F35 /* ToshiVlog */,
+				B7B99FCD439506BA45C01345 /* Products */,
+			);
+			sourceTree = "<group>";
+		};
+		B7B99FCD439506BA45C01345 /* Products */ = {
+			isa = PBXGroup;
+			children = (
+				228DC3E9506EA1DBD07CE717 /* ToshiVlog.app */,
+			);
+			name = Products;
+			sourceTree = "<group>";
+		};
+		825061D2E7AD5FB975BC2F35 /* ToshiVlog */ = {
+			isa = PBXGroup;
+			children = (
+				B9D2EFA83BA43EC14DB4C1ED /* ToshiVlogApp.swift */,
+				2BAAB60DCFB20242F2381D69 /* ContentView.swift */,
+				8BED0201E901A928FBF9D816 /* Models */,
+				23935D42ED5D652FEBE7BDD2 /* Views */,
+				B28CEB9E80846145A6C08471 /* Assets.xcassets */,
+				DD110EDBEDC6B49F9C07C78D /* Info.plist */,
+			);
+			path = ToshiVlog;
+			sourceTree = "<group>";
+		};
+		8BED0201E901A928FBF9D816 /* Models */ = {
+			isa = PBXGroup;
+			children = (
+				3604DDE8D6CAC2B049F68B73 /* VideoItem.swift */,
+				1364F4D9795F5CAAABD9D179 /* CameraViewModel.swift */,
+				20E9C016A979EB4A198C47E2 /* VideoLibrary.swift */,
+			);
+			path = Models;
+			sourceTree = "<group>";
+		};
+		23935D42ED5D652FEBE7BDD2 /* Views */ = {
+			isa = PBXGroup;
+			children = (
+				D86A480E2EE1F4E65F4F3D27 /* CameraView.swift */,
+				F5FB10B8EE17B3C2D099AE29 /* CameraPreviewView.swift */,
+				EA0B1D977AA65FA5A4F94C1F /* VideoListView.swift */,
+				F0EE9ACA5794650805071E53 /* VideoRowView.swift */,
+				239AFB3A4960A937780897F3 /* VideoPlayerScreen.swift */,
+			);
+			path = Views;
+			sourceTree = "<group>";
+		};
+/* End PBXGroup section */
+
+/* Begin PBXNativeTarget section */
+		05F7B2B57608C0DB9AAACE7F /* ToshiVlog */ = {
+			isa = PBXNativeTarget;
+			buildConfigurationList = 5FA871FA717FD9EF7DF52323 /* Build configuration list for PBXNativeTarget "ToshiVlog" */;
+			buildPhases = (
+				6077D42A3A086492C800926B /* Sources */,
+				FC11D0DD9A904C9972E4326E /* Frameworks */,
+				BC4BAE99BB9CA8C2474D56AC /* Resources */,
+			);
+			buildRules = (
+			);
+			dependencies = (
+			);
+			name = ToshiVlog;
+			productName = ToshiVlog;
+			productReference = 228DC3E9506EA1DBD07CE717 /* ToshiVlog.app */;
+			productType = "com.apple.product-type.application";
+		};
+/* End PBXNativeTarget section */
+
+/* Begin PBXProject section */
+		C9CD2F8B40F7BAA4B5974F42 /* Project object */ = {
+			isa = PBXProject;
+			attributes = {
+				BuildIndependentTargetsInParallel = 1;
+				LastSwiftUpdateCheck = 1520;
+				LastUpgradeCheck = 1520;
+				TargetAttributes = {
+					05F7B2B57608C0DB9AAACE7F = {
+						CreatedOnToolsVersion = 15.2;
+					};
+				};
+			};
+			buildConfigurationList = BBB9629271189D6996EE874B /* Build configuration list for PBXProject "ToshiVlog" */;
+			compatibilityVersion = "Xcode 14.0";
+			developmentRegion = ja;
+			hasScannedForEncodings = 0;
+			knownRegions = (
+				ja,
+				Base,
+			);
+			mainGroup = 920F816EEC1B9BBF35F1FDF9;
+			productRefGroup = B7B99FCD439506BA45C01345 /* Products */;
+			projectDirPath = "";
+			projectRoot = "";
+			targets = (
+				05F7B2B57608C0DB9AAACE7F /* ToshiVlog */,
+			);
+		};
+/* End PBXProject section */
+
+/* Begin PBXResourcesBuildPhase section */
+		BC4BAE99BB9CA8C2474D56AC /* Resources */ = {
+			isa = PBXResourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				D68EF449E4EB231B827B6810 /* Assets.xcassets in Resources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXResourcesBuildPhase section */
+
+/* Begin PBXSourcesBuildPhase section */
+		6077D42A3A086492C800926B /* Sources */ = {
+			isa = PBXSourcesBuildPhase;
+			buildActionMask = 2147483647;
+			files = (
+				89627FBC59FC85787FE3928E /* ToshiVlogApp.swift in Sources */,
+				51767C87A3E66A9C7C244F3F /* ContentView.swift in Sources */,
+				DDA0E1359E68ECC7F99DF446 /* VideoItem.swift in Sources */,
+				14C1DC6552CEC8F48BC3EE22 /* CameraViewModel.swift in Sources */,
+				F52872944FE9011BECE81C0A /* VideoLibrary.swift in Sources */,
+				6DF1B863D3DBF8C16515D2DA /* CameraView.swift in Sources */,
+				EA764BE1CD1C1AFE1A84E877 /* CameraPreviewView.swift in Sources */,
+				8F8BDD35ACF487AA97D85B81 /* VideoListView.swift in Sources */,
+				3EA2E89D8DEECA1B6367AE8A /* VideoRowView.swift in Sources */,
+				0A47F5AB3599E6D9A21DEC6C /* VideoPlayerScreen.swift in Sources */,
+			);
+			runOnlyForDeploymentPostprocessing = 0;
+		};
+/* End PBXSourcesBuildPhase section */
+
+/* Begin XCBuildConfiguration section */
+		0DDE9D151D6D1A345193B78E /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = dwarf;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_TESTABILITY = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_DYNAMIC_NO_PIC = NO;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_OPTIMIZATION_LEVEL = 0;
+				GCC_PREPROCESSOR_DEFINITIONS = (
+					"DEBUG=1",
+					"$(inherited)",
+				);
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = INCLUDE_SOURCE;
+				MTL_FAST_MATH = YES;
+				ONLY_ACTIVE_ARCH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_ACTIVE_COMPILATION_CONDITIONS = "DEBUG $(inherited)";
+				SWIFT_OPTIMIZATION_LEVEL = "-Onone";
+			};
+			name = Debug;
+		};
+		46F9C8FC8F9FC80440D4166E /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ALWAYS_SEARCH_USER_PATHS = NO;
+				ASSETCATALOG_COMPILER_GENERATE_SWIFT_ASSET_SYMBOL_EXTENSIONS = YES;
+				CLANG_ANALYZER_NONNULL = YES;
+				CLANG_ANALYZER_NUMBER_OBJECT_CONVERSION = YES_AGGRESSIVE;
+				CLANG_CXX_LANGUAGE_STANDARD = "gnu++20";
+				CLANG_ENABLE_MODULES = YES;
+				CLANG_ENABLE_OBJC_ARC = YES;
+				CLANG_ENABLE_OBJC_WEAK = YES;
+				CLANG_WARN_BLOCK_CAPTURE_AUTORELEASING = YES;
+				CLANG_WARN_BOOL_CONVERSION = YES;
+				CLANG_WARN_COMMA = YES;
+				CLANG_WARN_CONSTANT_CONVERSION = YES;
+				CLANG_WARN_DEPRECATED_OBJC_IMPLEMENTATIONS = YES;
+				CLANG_WARN_DIRECT_OBJC_ISA_USAGE = YES_ERROR;
+				CLANG_WARN_DOCUMENTATION_COMMENTS = YES;
+				CLANG_WARN_EMPTY_BODY = YES;
+				CLANG_WARN_ENUM_CONVERSION = YES;
+				CLANG_WARN_INFINITE_RECURSION = YES;
+				CLANG_WARN_INT_CONVERSION = YES;
+				CLANG_WARN_NON_LITERAL_NULL_CONVERSION = YES;
+				CLANG_WARN_OBJC_IMPLICIT_RETAIN_SELF = YES;
+				CLANG_WARN_OBJC_LITERAL_CONVERSION = YES;
+				CLANG_WARN_OBJC_ROOT_CLASS = YES_ERROR;
+				CLANG_WARN_QUOTED_INCLUDE_IN_FRAMEWORK_HEADER = YES;
+				CLANG_WARN_RANGE_LOOP_ANALYSIS = YES;
+				CLANG_WARN_STRICT_PROTOTYPES = YES;
+				CLANG_WARN_SUSPICIOUS_MOVE = YES;
+				CLANG_WARN_UNGUARDED_AVAILABILITY = YES_AGGRESSIVE;
+				CLANG_WARN_UNREACHABLE_CODE = YES;
+				CLANG_WARN__DUPLICATE_METHOD_MATCH = YES;
+				COPY_PHASE_STRIP = NO;
+				DEBUG_INFORMATION_FORMAT = "dwarf-with-dsym";
+				ENABLE_NS_ASSERTIONS = NO;
+				ENABLE_STRICT_OBJC_MSGSEND = YES;
+				ENABLE_USER_SCRIPT_SANDBOXING = YES;
+				GCC_C_LANGUAGE_STANDARD = gnu17;
+				GCC_NO_COMMON_BLOCKS = YES;
+				GCC_WARN_64_TO_32_BIT_CONVERSION = YES;
+				GCC_WARN_ABOUT_RETURN_TYPE = YES_ERROR;
+				GCC_WARN_UNDECLARED_SELECTOR = YES;
+				GCC_WARN_UNINITIALIZED_AUTOS = YES_AGGRESSIVE;
+				GCC_WARN_UNUSED_FUNCTION = YES;
+				GCC_WARN_UNUSED_VARIABLE = YES;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				MTL_ENABLE_DEBUG_INFO = NO;
+				MTL_FAST_MATH = YES;
+				SDKROOT = iphoneos;
+				SWIFT_COMPILATION_MODE = wholemodule;
+				VALIDATE_PRODUCT = YES;
+			};
+			name = Release;
+		};
+		BAD6ED17D235EE37CBE4A447 /* Debug */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ToshiVlog/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.toshivlog.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Debug;
+		};
+		81E779CA09342DB508E12522 /* Release */ = {
+			isa = XCBuildConfiguration;
+			buildSettings = {
+				ASSETCATALOG_COMPILER_APPICON_NAME = AppIcon;
+				ASSETCATALOG_COMPILER_GLOBAL_ACCENT_COLOR_NAME = AccentColor;
+				CODE_SIGN_STYLE = Automatic;
+				CURRENT_PROJECT_VERSION = 1;
+				GENERATE_INFOPLIST_FILE = NO;
+				INFOPLIST_FILE = ToshiVlog/Info.plist;
+				INFOPLIST_KEY_UIApplicationSceneManifest_Generation = YES;
+				INFOPLIST_KEY_UIApplicationSupportsIndirectInputEvents = YES;
+				INFOPLIST_KEY_UISupportedInterfaceOrientations = UIInterfaceOrientationPortrait;
+				IPHONEOS_DEPLOYMENT_TARGET = 17.0;
+				LD_RUNPATH_SEARCH_PATHS = (
+					"$(inherited)",
+					"@executable_path/Frameworks",
+				);
+				MARKETING_VERSION = 1.0;
+				PRODUCT_BUNDLE_IDENTIFIER = com.toshivlog.app;
+				PRODUCT_NAME = "$(TARGET_NAME)";
+				SWIFT_EMIT_LOC_STRINGS = YES;
+				SWIFT_VERSION = 5.0;
+				TARGETED_DEVICE_FAMILY = "1,2";
+			};
+			name = Release;
+		};
+/* End XCBuildConfiguration section */
+
+/* Begin XCConfigurationList section */
+		BBB9629271189D6996EE874B /* Build configuration list for PBXProject "ToshiVlog" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				0DDE9D151D6D1A345193B78E /* Debug */,
+				46F9C8FC8F9FC80440D4166E /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+		5FA871FA717FD9EF7DF52323 /* Build configuration list for PBXNativeTarget "ToshiVlog" */ = {
+			isa = XCConfigurationList;
+			buildConfigurations = (
+				BAD6ED17D235EE37CBE4A447 /* Debug */,
+				81E779CA09342DB508E12522 /* Release */,
+			);
+			defaultConfigurationIsVisible = 0;
+			defaultConfigurationName = Release;
+		};
+/* End XCConfigurationList section */
+	};
+	rootObject = C9CD2F8B40F7BAA4B5974F42 /* Project object */;
+}
