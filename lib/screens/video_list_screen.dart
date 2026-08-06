@@ -72,7 +72,7 @@ class _VideoListScreenState extends State<VideoListScreen> {
                     ),
                     onDismissed: (_) => widget.videoLibrary.delete(video),
                     child: ListTile(
-                      leading: VideoThumbnail(video: video),
+                      leading: VideoThumbnail(file: video.file),
                       title: Text(
                         DateFormat('yyyy/MM/dd HH:mm').format(video.createdAt),
                       ),
@@ -80,7 +80,11 @@ class _VideoListScreenState extends State<VideoListScreen> {
                       onTap: () {
                         Navigator.of(context).push(
                           MaterialPageRoute(
-                            builder: (_) => VideoPlayerScreen(video: video),
+                            builder: (_) => VideoPlayerScreen(
+                              file: video.file,
+                              title: DateFormat('yyyy/MM/dd HH:mm')
+                                  .format(video.createdAt),
+                            ),
                           ),
                         );
                       },

@@ -1,12 +1,12 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
-import '../models/video_item.dart';
-
 class VideoThumbnail extends StatefulWidget {
-  const VideoThumbnail({super.key, required this.video});
+  const VideoThumbnail({super.key, required this.file});
 
-  final VideoItem video;
+  final File file;
 
   @override
   State<VideoThumbnail> createState() => _VideoThumbnailState();
@@ -21,8 +21,18 @@ class _VideoThumbnailState extends State<VideoThumbnail> {
     _load();
   }
 
+  @override
+  void didUpdateWidget(covariant VideoThumbnail oldWidget) {
+    super.didUpdateWidget(oldWidget);
+    if (oldWidget.file.path != widget.file.path) {
+      _controller?.dispose();
+      _controller = null;
+      _load();
+    }
+  }
+
   Future<void> _load() async {
-    final controller = VideoPlayerController.file(widget.video.file);
+    final controller = VideoPlayerController.file(widget.file);
     try {
       await controller.initialize();
       await controller.pause();

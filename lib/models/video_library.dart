@@ -55,13 +55,15 @@ class VideoLibrary extends ChangeNotifier {
     }
   }
 
-  Future<void> store(String temporaryPath) async {
+  Future<File> store(String temporaryPath) async {
     final dir = await _videosDirectory();
     final fileName = '${DateTime.now().microsecondsSinceEpoch}.mp4';
     final source = File(temporaryPath);
-    await source.copy('${dir.path}/$fileName');
+    final destination = File('${dir.path}/$fileName');
+    await source.copy(destination.path);
     await source.delete();
     await reload();
+    return destination;
   }
 
   Future<void> delete(VideoItem item) async {

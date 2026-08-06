@@ -1,13 +1,19 @@
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
 
+import '../models/highlight_reel.dart';
 import '../models/video_library.dart';
 import '../widgets/camera_controls.dart';
 
 class CameraScreen extends StatefulWidget {
-  const CameraScreen({super.key, required this.videoLibrary});
+  const CameraScreen({
+    super.key,
+    required this.videoLibrary,
+    required this.highlightReel,
+  });
 
   final VideoLibrary videoLibrary;
+  final HighlightReel highlightReel;
 
   @override
   State<CameraScreen> createState() => _CameraScreenState();
@@ -85,23 +91,29 @@ class _CameraScreenState extends State<CameraScreen>
     if (mounted) setState(() {});
   }
 
-  static const _clipDuration = Duration(seconds: 1);
-
-  Future<void> _recordOneSecondClip() async {
+  Future<void> _toggleRecording() async {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
-    if (_isRecording) return;
 
-    setState(() => _isRecording = true);
-    try {
-      await controller.startVideoRecording();
-      await Future.delayed(_clipDuration);
-      final file = await controller.stopVideoRecording();
-      await widget.videoLibrary.store(file.path);
-    } catch (_) {
-      if (mounted) setState(() => _errorMessage = '録画に失敗しました');
-    } finally {
-      if (mounted) setState(() => _isRecording = false);
+    if (_isRecording) {
+      try {
+        final file = await controller.stopVideoRecording();
+        final savedFile = await widget.videoLibrary.store(file.path);
+        // Trims the first second into the highlight reel in the background;
+        // errors surface via HighlightReel.errorMessage on the まとめ tab.
+        widget.highlightReel.addClip(savedFile);
+      } catch (_) {
+        if (mounted) setState(() => _errorMessage = '録画の保存に失敗しました');
+      } finally {
+        if (mounted) setState(() => _isRecording = false);
+      }
+    } else {
+      try {
+        await controller.startVideoRecording();
+        setState(() => _isRecording = true);
+      } catch (_) {
+        if (mounted) setState(() => _errorMessage = '録画を開始できませんでした');
+      }
     }
   }
 
@@ -146,7 +158,7 @@ class _CameraScreenState extends State<CameraScreen>
                   mainAxisSize: MainAxisSize.min,
                   children: [
                     Text(
-                      _isRecording ? '撮影中…' : 'タップで1秒動画を撮影',
+                      _isRecording ? 'タップで録画終了' : 'タップで録画開始',
                       style: const TextStyle(color: Colors.white70),
                     ),
                     const SizedBox(height: 12),
@@ -157,7 +169,7 @@ class _CameraScreenState extends State<CameraScreen>
                         const Spacer(),
                         RecordButton(
                           isRecording: _isRecording,
-                          onTap: _recordOneSecondClip,
+                          onTap: _toggleRecording,
                         ),
                         const Spacer(),
                         SwitchCameraButton(

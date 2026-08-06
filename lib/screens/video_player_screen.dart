@@ -1,13 +1,13 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
-import 'package:intl/intl.dart';
 import 'package:video_player/video_player.dart';
 
-import '../models/video_item.dart';
-
 class VideoPlayerScreen extends StatefulWidget {
-  const VideoPlayerScreen({super.key, required this.video});
+  const VideoPlayerScreen({super.key, required this.file, required this.title});
 
-  final VideoItem video;
+  final File file;
+  final String title;
 
   @override
   State<VideoPlayerScreen> createState() => _VideoPlayerScreenState();
@@ -20,7 +20,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   void initState() {
     super.initState();
-    _controller = VideoPlayerController.file(widget.video.file);
+    _controller = VideoPlayerController.file(widget.file);
     _controller.initialize().then((_) {
       if (!mounted) return;
       setState(() => _isReady = true);
@@ -37,11 +37,7 @@ class _VideoPlayerScreenState extends State<VideoPlayerScreen> {
   @override
   Widget build(BuildContext context) {
     return Scaffold(
-      appBar: AppBar(
-        title: Text(
-          DateFormat('yyyy/MM/dd HH:mm').format(widget.video.createdAt),
-        ),
-      ),
+      appBar: AppBar(title: Text(widget.title)),
       backgroundColor: Colors.black,
       body: Center(
         child: _isReady

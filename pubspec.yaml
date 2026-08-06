@@ -38,6 +38,7 @@ dependencies:
   path_provider: ^2.1.6
   video_player: ^2.13.0
   intl: ^0.20.3
+  ffmpeg_kit_flutter_new: ^4.6.2
 
 dev_dependencies:
   flutter_test:
