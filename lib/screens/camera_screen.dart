@@ -85,17 +85,23 @@ class _CameraScreenState extends State<CameraScreen>
     if (mounted) setState(() {});
   }
 
-  Future<void> _toggleRecording() async {
+  static const _clipDuration = Duration(seconds: 1);
+
+  Future<void> _recordOneSecondClip() async {
     final controller = _controller;
     if (controller == null || !controller.value.isInitialized) return;
+    if (_isRecording) return;
 
-    if (_isRecording) {
-      final file = await controller.stopVideoRecording();
-      setState(() => _isRecording = false);
-      await widget.videoLibrary.store(file.path);
-    } else {
+    setState(() => _isRecording = true);
+    try {
       await controller.startVideoRecording();
-      setState(() => _isRecording = true);
+      await Future.delayed(_clipDuration);
+      final file = await controller.stopVideoRecording();
+      await widget.videoLibrary.store(file.path);
+    } catch (_) {
+      if (mounted) setState(() => _errorMessage = '録画に失敗しました');
+    } finally {
+      if (mounted) setState(() => _isRecording = false);
     }
   }
 
@@ -136,19 +142,29 @@ class _CameraScreenState extends State<CameraScreen>
               alignment: Alignment.bottomCenter,
               child: Padding(
                 padding: const EdgeInsets.only(bottom: 32),
-                child: Row(
-                  mainAxisAlignment: MainAxisAlignment.center,
+                child: Column(
+                  mainAxisSize: MainAxisSize.min,
                   children: [
-                    const SizedBox(width: 56),
-                    const Spacer(),
-                    RecordButton(
-                      isRecording: _isRecording,
-                      onTap: _toggleRecording,
+                    Text(
+                      _isRecording ? '撮影中…' : 'タップで1秒動画を撮影',
+                      style: const TextStyle(color: Colors.white70),
                     ),
-                    const Spacer(),
-                    SwitchCameraButton(
-                      enabled: !_isRecording && _cameras.length > 1,
-                      onTap: _switchCamera,
+                    const SizedBox(height: 12),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.center,
+                      children: [
+                        const SizedBox(width: 56),
+                        const Spacer(),
+                        RecordButton(
+                          isRecording: _isRecording,
+                          onTap: _recordOneSecondClip,
+                        ),
+                        const Spacer(),
+                        SwitchCameraButton(
+                          enabled: !_isRecording && _cameras.length > 1,
+                          onTap: _switchCamera,
+                        ),
+                      ],
                     ),
                   ],
                 ),
