@@ -1,12 +1,15 @@
 import 'package:flutter/material.dart';
+import 'package:intl/date_symbol_data_local.dart';
 
 import 'models/highlight_reel.dart';
 import 'models/video_library.dart';
 import 'screens/camera_screen.dart';
 import 'screens/highlight_screen.dart';
-import 'screens/video_list_screen.dart';
+import 'screens/media_screen.dart';
 
-void main() {
+Future<void> main() async {
+  WidgetsFlutterBinding.ensureInitialized();
+  await initializeDateFormatting();
   runApp(const ToshiVlogApp());
 }
 
@@ -56,7 +59,7 @@ class _RootScreenState extends State<RootScreen> {
     final screens = [
       CameraScreen(videoLibrary: _videoLibrary, highlightReel: _highlightReel),
       HighlightScreen(highlightReel: _highlightReel),
-      VideoListScreen(videoLibrary: _videoLibrary),
+      MediaScreen(videoLibrary: _videoLibrary),
     ];
 
     return Scaffold(
@@ -70,7 +73,7 @@ class _RootScreenState extends State<RootScreen> {
             icon: Icon(Icons.movie_creation_outlined),
             label: 'まとめ',
           ),
-          NavigationDestination(icon: Icon(Icons.list), label: '一覧'),
+          NavigationDestination(icon: Icon(Icons.photo_library), label: 'メディア'),
         ],
       ),
     );
