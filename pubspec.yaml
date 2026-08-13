@@ -38,7 +38,12 @@ dependencies:
   path_provider: ^2.1.6
   video_player: ^2.13.0
   intl: ^0.20.3
-  ffmpeg_kit_flutter_new: ^4.6.2
+  # Pinned below 4.5.0: that version added an iOS Package.swift requiring
+  # iOS 14, which conflicts with Flutter's Swift Package Manager wrapper
+  # (FlutterGeneratedPluginSwiftPackage), which is hardcoded to iOS 13.
+  # This version has no Package.swift, so it's resolved via CocoaPods only,
+  # where our actual iOS 17 deployment target has no conflict.
+  ffmpeg_kit_flutter_new: 4.4.2
 
 dev_dependencies:
   flutter_test:
