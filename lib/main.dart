@@ -2,6 +2,7 @@ import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
 import 'models/highlight_reel.dart';
+import 'models/subscription_service.dart';
 import 'models/video_library.dart';
 import 'screens/camera_screen.dart';
 import 'screens/highlight_screen.dart';
@@ -39,18 +40,21 @@ class RootScreen extends StatefulWidget {
 class _RootScreenState extends State<RootScreen> {
   final VideoLibrary _videoLibrary = VideoLibrary();
   final HighlightReel _highlightReel = HighlightReel();
+  final SubscriptionService _subscriptionService = SubscriptionService();
   int _currentIndex = 0;
 
   @override
   void initState() {
     super.initState();
     _highlightReel.load();
+    _subscriptionService.init();
   }
 
   @override
   void dispose() {
     _videoLibrary.dispose();
     _highlightReel.dispose();
+    _subscriptionService.dispose();
     super.dispose();
   }
 
@@ -58,7 +62,10 @@ class _RootScreenState extends State<RootScreen> {
   Widget build(BuildContext context) {
     final screens = [
       CameraScreen(videoLibrary: _videoLibrary, highlightReel: _highlightReel),
-      HighlightScreen(highlightReel: _highlightReel),
+      HighlightScreen(
+        highlightReel: _highlightReel,
+        subscriptionService: _subscriptionService,
+      ),
       MediaScreen(videoLibrary: _videoLibrary),
     ];
 

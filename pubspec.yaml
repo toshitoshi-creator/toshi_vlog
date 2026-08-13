@@ -44,6 +44,7 @@ dependencies:
   # This version has no Package.swift, so it's resolved via CocoaPods only,
   # where our actual iOS 17 deployment target has no conflict.
   ffmpeg_kit_flutter_new: 4.4.2
+  in_app_purchase: ^3.3.0
 
 dev_dependencies:
   flutter_test:

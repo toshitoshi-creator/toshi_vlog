@@ -2,13 +2,20 @@ import 'package:flutter/material.dart';
 
 import '../models/clip_trim_mode.dart';
 import '../models/highlight_reel.dart';
+import '../models/subscription_service.dart';
 import '../widgets/video_thumbnail.dart';
+import 'paywall_screen.dart';
 import 'video_player_screen.dart';
 
 class HighlightScreen extends StatefulWidget {
-  const HighlightScreen({super.key, required this.highlightReel});
+  const HighlightScreen({
+    super.key,
+    required this.highlightReel,
+    required this.subscriptionService,
+  });
 
   final HighlightReel highlightReel;
+  final SubscriptionService subscriptionService;
 
   @override
   State<HighlightScreen> createState() => _HighlightScreenState();
@@ -29,6 +36,20 @@ class _HighlightScreenState extends State<HighlightScreen> {
 
   void _onChanged() {
     if (mounted) setState(() {});
+  }
+
+  void _handleRedo(int index) {
+    if (!widget.subscriptionService.isPremium) {
+      Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) => PaywallScreen(
+            subscriptionService: widget.subscriptionService,
+          ),
+        ),
+      );
+      return;
+    }
+    widget.highlightReel.redo(index);
   }
 
   @override
@@ -67,6 +88,28 @@ class _HighlightScreenState extends State<HighlightScreen> {
                   onSelectionChanged: (selection) =>
                       reel.setTrimMode(selection.first),
                 ),
+                const SizedBox(height: 16),
+                Text('クリップの長さ', style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(height: 8),
+                SegmentedButton<Duration>(
+                  segments: const [
+                    ButtonSegment(
+                      value: Duration(seconds: 1),
+                      label: Text('1秒'),
+                    ),
+                    ButtonSegment(
+                      value: Duration(seconds: 2),
+                      label: Text('2秒'),
+                    ),
+                    ButtonSegment(
+                      value: Duration(seconds: 3),
+                      label: Text('3秒'),
+                    ),
+                  ],
+                  selected: {reel.clipDuration},
+                  onSelectionChanged: (selection) =>
+                      reel.setClipDuration(selection.first),
+                ),
               ],
             ),
           ),
@@ -75,8 +118,9 @@ class _HighlightScreenState extends State<HighlightScreen> {
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                '撮影した動画から選んだ方式で1秒だけ切り取られ、ここに追加されます'
-                '(切り替えは以降撮影分から適用されます)。並び替えや削除で手動編集できます。',
+                '撮影した動画から選んだ方式・長さで切り取られ、ここに追加されます'
+                '(切り替えは以降撮影分から適用されます)。並び替えや削除で手動編集できます。'
+                'ランダム・盛り上がりのクリップはプレミアム登録で作り直しできます。',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
@@ -95,9 +139,20 @@ class _HighlightScreenState extends State<HighlightScreen> {
                         key: ValueKey(segment.id),
                         leading: VideoThumbnail(file: segment.file),
                         title: Text('${index + 1}番目'),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () => reel.removeAt(index),
+                        trailing: Row(
+                          mainAxisSize: MainAxisSize.min,
+                          children: [
+                            if (reel.trimMode != ClipTrimMode.start)
+                              IconButton(
+                                icon: const Icon(Icons.refresh),
+                                tooltip: '作り直す',
+                                onPressed: () => _handleRedo(index),
+                              ),
+                            IconButton(
+                              icon: const Icon(Icons.delete_outline),
+                              onPressed: () => reel.removeAt(index),
+                            ),
+                          ],
                         ),
                       );
                     },
@@ -129,7 +184,7 @@ class _CompiledPreview extends StatelessWidget {
         );
       },
       icon: const Icon(Icons.play_arrow),
-      label: Text('まとめ動画を再生 (${reel.segments.length}秒)'),
+      label: Text('まとめ動画を再生 (${reel.segments.length}クリップ)'),
     );
   }
 }

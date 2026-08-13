@@ -11,17 +11,19 @@ import 'package:path_provider/path_provider.dart';
 import 'clip_trim_mode.dart';
 import 'highlight_segment.dart';
 
-/// Keeps a running "1 second per clip" highlight reel: every time a full
-/// recording is added, one second of it is trimmed (per [trimMode]) into a
-/// normalized segment file and the segments are concatenated into a single
-/// compiled video. Segment order can be edited manually and clips can be
-/// removed.
+/// Keeps a running "N seconds per clip" highlight reel: every time a full
+/// recording is added, a window of it (length [clipDuration], chosen per
+/// [trimMode]) is trimmed into a normalized segment file and the segments
+/// are concatenated into a single compiled video. Segment order can be
+/// edited manually, individual segments can be re-trimmed via [redo], and
+/// clips can be removed.
 class HighlightReel extends ChangeNotifier {
   List<HighlightSegment> _segments = [];
   File? _compiledFile;
   bool _isProcessing = false;
   String? _errorMessage;
   ClipTrimMode _trimMode = ClipTrimMode.random;
+  Duration _clipDuration = const Duration(seconds: 1);
   final _random = Random();
 
   List<HighlightSegment> get segments => List.unmodifiable(_segments);
@@ -29,6 +31,7 @@ class HighlightReel extends ChangeNotifier {
   bool get isProcessing => _isProcessing;
   String? get errorMessage => _errorMessage;
   ClipTrimMode get trimMode => _trimMode;
+  Duration get clipDuration => _clipDuration;
 
   Future<Directory> _highlightsDirectory() async {
     final documentsDir = await getApplicationDocumentsDirectory();
@@ -81,14 +84,19 @@ class HighlightReel extends ChangeNotifier {
     final settings = await _settingsFile();
     if (await settings.exists()) {
       try {
-        final raw = jsonDecode(await settings.readAsString()) as Map<String, dynamic>;
+        final raw =
+            jsonDecode(await settings.readAsString()) as Map<String, dynamic>;
         final modeName = raw['trimMode'] as String?;
         _trimMode = ClipTrimMode.values.firstWhere(
           (mode) => mode.name == modeName,
           orElse: () => ClipTrimMode.random,
         );
+        final durationMs = raw['clipDurationMs'] as int?;
+        if (durationMs != null && durationMs > 0) {
+          _clipDuration = Duration(milliseconds: durationMs);
+        }
       } catch (_) {
-        // Keep the default trim mode.
+        // Keep the defaults.
       }
     }
 
@@ -103,8 +111,26 @@ class HighlightReel extends ChangeNotifier {
     if (_trimMode == mode) return;
     _trimMode = mode;
     notifyListeners();
+    await _persistSettings();
+  }
+
+  /// Changes the length of future clips. Already-added segments keep their
+  /// original length until individually [redo]ne.
+  Future<void> setClipDuration(Duration duration) async {
+    if (_clipDuration == duration) return;
+    _clipDuration = duration;
+    notifyListeners();
+    await _persistSettings();
+  }
+
+  Future<void> _persistSettings() async {
     final settings = await _settingsFile();
-    await settings.writeAsString(jsonEncode({'trimMode': mode.name}));
+    await settings.writeAsString(
+      jsonEncode({
+        'trimMode': _trimMode.name,
+        'clipDurationMs': _clipDuration.inMilliseconds,
+      }),
+    );
   }
 
   Future<void> _persistManifest() async {
@@ -114,46 +140,69 @@ class HighlightReel extends ChangeNotifier {
   }
 
   Future<void> addClip(File sourceClip) => _guarded(() async {
-        final segmentsDir = await _segmentsDirectory();
-        final id = DateTime.now().microsecondsSinceEpoch.toString();
-        final outputFile = File('${segmentsDir.path}/$id.mp4');
-        final startOffset = await _computeStartOffset(sourceClip);
-        await _trimToOneSecond(sourceClip, outputFile, startOffset);
+    final segmentsDir = await _segmentsDirectory();
+    final id = DateTime.now().microsecondsSinceEpoch.toString();
+    final outputFile = File('${segmentsDir.path}/$id.mp4');
+    final startOffset = await _computeStartOffset(sourceClip);
+    await _trimClip(sourceClip, outputFile, startOffset);
 
-        _segments = [
-          ..._segments,
-          HighlightSegment(
-            id: id,
-            file: outputFile,
-            sourcePath: sourceClip.path,
-            createdAt: DateTime.now(),
-          ),
-        ];
-        await _persistManifest();
-        await _recompose();
-      }, 'まとめ動画への追加に失敗しました');
+    _segments = [
+      ..._segments,
+      HighlightSegment(
+        id: id,
+        file: outputFile,
+        sourcePath: sourceClip.path,
+        createdAt: DateTime.now(),
+      ),
+    ];
+    await _persistManifest();
+    await _recompose();
+  }, 'まとめ動画への追加に失敗しました');
+
+  /// Re-trims a segment using the current [trimMode]. For [ClipTrimMode.random]
+  /// this naturally lands somewhere different each time; for
+  /// [ClipTrimMode.loudest] it cycles to the next-loudest candidate window
+  /// instead of repeating the same (loudest) one. A no-op for
+  /// [ClipTrimMode.start].
+  Future<void> redo(int index) => _guarded(() async {
+    final segment = _segments[index];
+    final source = File(segment.sourcePath);
+    if (!await source.exists()) {
+      throw Exception('元の動画が見つかりません');
+    }
+    final nextRedoCount = segment.redoCount + 1;
+    final startOffset = await _computeStartOffset(source, rank: nextRedoCount);
+    await _trimClip(source, segment.file, startOffset);
+
+    _segments = [
+      for (final s in _segments)
+        if (s.id == segment.id) s.copyWith(redoCount: nextRedoCount) else s,
+    ];
+    await _persistManifest();
+    await _recompose();
+  }, 'クリップの作り直しに失敗しました');
 
   /// [newIndex] is the target index after [oldIndex] has been removed
   /// (i.e. as reported by [ReorderableListView]'s `onReorderItem`).
   Future<void> reorder(int oldIndex, int newIndex) => _guarded(() async {
-        final updated = [..._segments];
-        final item = updated.removeAt(oldIndex);
-        updated.insert(newIndex, item);
-        _segments = updated;
-        await _persistManifest();
-        await _recompose();
-      }, 'まとめ動画の並び替えに失敗しました');
+    final updated = [..._segments];
+    final item = updated.removeAt(oldIndex);
+    updated.insert(newIndex, item);
+    _segments = updated;
+    await _persistManifest();
+    await _recompose();
+  }, 'まとめ動画の並び替えに失敗しました');
 
   Future<void> removeAt(int index) => _guarded(() async {
-        final updated = [..._segments];
-        final removed = updated.removeAt(index);
-        _segments = updated;
-        if (await removed.file.exists()) {
-          await removed.file.delete();
-        }
-        await _persistManifest();
-        await _recompose();
-      }, 'まとめ動画の更新に失敗しました');
+    final updated = [..._segments];
+    final removed = updated.removeAt(index);
+    _segments = updated;
+    if (await removed.file.exists()) {
+      await removed.file.delete();
+    }
+    await _persistManifest();
+    await _recompose();
+  }, 'まとめ動画の更新に失敗しました');
 
   Future<void> _guarded(
     Future<void> Function() action,
@@ -185,68 +234,66 @@ class HighlightReel extends ChangeNotifier {
     return Duration(milliseconds: (seconds * 1000).round());
   }
 
-  Future<Duration> _computeStartOffset(File source) async {
+  Future<Duration> _computeStartOffset(File source, {int rank = 0}) async {
     switch (_trimMode) {
       case ClipTrimMode.start:
         return Duration.zero;
       case ClipTrimMode.random:
         final duration = await _probeDuration(source);
-        final maxStartMs = duration.inMilliseconds - 1000;
+        final maxStartMs = duration.inMilliseconds - _clipDuration.inMilliseconds;
         if (maxStartMs <= 0) return Duration.zero;
         return Duration(milliseconds: _random.nextInt(maxStartMs + 1));
       case ClipTrimMode.loudest:
-        return _findLoudestOffset(source);
+        return _findLoudestOffset(source, rank);
     }
   }
 
-  /// Samples mean volume across candidate 1-second windows and returns the
-  /// start offset of the loudest one, as a cheap proxy for "an exciting
-  /// moment" without needing on-device ML.
-  Future<Duration> _findLoudestOffset(File source) async {
+  /// Samples mean volume across candidate windows (length [clipDuration])
+  /// and returns the start offset of the [rank]-th loudest one (0 = loudest),
+  /// wrapping around if [rank] exceeds the number of candidates. This is a
+  /// cheap proxy for "an exciting moment" without needing on-device ML, and
+  /// lets [redo] explore other loud spots instead of always finding the same
+  /// single loudest one.
+  Future<Duration> _findLoudestOffset(File source, int rank) async {
     final duration = await _probeDuration(source);
-    final maxStartSeconds = duration.inMilliseconds / 1000 - 1;
+    final clipSeconds = _clipDuration.inMilliseconds / 1000;
+    final maxStartSeconds = duration.inMilliseconds / 1000 - clipSeconds;
     if (maxStartSeconds <= 0) return Duration.zero;
 
     const maxSamples = 12;
-    final totalWholeSeconds = maxStartSeconds.floor();
-    final sampleCount = totalWholeSeconds < maxSamples
-        ? totalWholeSeconds + 1
-        : maxSamples;
-    final step = sampleCount <= 1
-        ? 0.0
-        : maxStartSeconds / (sampleCount - 1);
+    final totalWindows = (maxStartSeconds / clipSeconds).floor() + 1;
+    final sampleCount = totalWindows < maxSamples ? totalWindows : maxSamples;
+    final step = sampleCount <= 1 ? 0.0 : maxStartSeconds / (sampleCount - 1);
 
-    var bestOffsetSeconds = 0.0;
-    var bestVolume = double.negativeInfinity;
-
+    final candidates = <MapEntry<double, double>>[];
     for (var i = 0; i < sampleCount; i++) {
       final offsetSeconds = sampleCount == 1 ? 0.0 : i * step;
-      final volume = await _meanVolumeAt(source, offsetSeconds);
-      if (volume != null && volume > bestVolume) {
-        bestVolume = volume;
-        bestOffsetSeconds = offsetSeconds;
-      }
+      final volume =
+          await _meanVolumeAt(source, offsetSeconds) ?? double.negativeInfinity;
+      candidates.add(MapEntry(offsetSeconds, volume));
     }
-
-    return Duration(milliseconds: (bestOffsetSeconds * 1000).round());
+    candidates.sort((a, b) => b.value.compareTo(a.value));
+    final picked = candidates[rank % candidates.length];
+    return Duration(milliseconds: (picked.key * 1000).round());
   }
 
   Future<double?> _meanVolumeAt(File source, double offsetSeconds) async {
     final session = await FFmpegKit.executeWithArguments([
       '-ss', offsetSeconds.toStringAsFixed(2),
-      '-t', '1',
+      '-t', (_clipDuration.inMilliseconds / 1000).toStringAsFixed(2),
       '-i', source.path,
       '-af', 'volumedetect',
       '-f', 'null',
       '-',
     ]);
     final logs = await session.getAllLogsAsString() ?? '';
-    final match = RegExp(r'mean_volume:\s*(-?\d+(\.\d+)?)\s*dB').firstMatch(logs);
+    final match =
+        RegExp(r'mean_volume:\s*(-?\d+(\.\d+)?)\s*dB').firstMatch(logs);
     if (match == null) return null;
     return double.tryParse(match.group(1)!);
   }
 
-  Future<void> _trimToOneSecond(
+  Future<void> _trimClip(
     File source,
     File output,
     Duration startOffset,
@@ -255,7 +302,7 @@ class HighlightReel extends ChangeNotifier {
       '-y',
       '-ss', (startOffset.inMilliseconds / 1000).toStringAsFixed(2),
       '-i', source.path,
-      '-t', '1',
+      '-t', (_clipDuration.inMilliseconds / 1000).toStringAsFixed(2),
       '-vf',
       'scale=w=720:h=1280:force_original_aspect_ratio=decrease,'
           'pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1',
