@@ -1,5 +1,6 @@
 import 'package:flutter/material.dart';
 
+import '../models/clip_trim_mode.dart';
 import '../models/highlight_reel.dart';
 import '../widgets/video_thumbnail.dart';
 import 'video_player_screen.dart';
@@ -51,12 +52,31 @@ class _HighlightScreenState extends State<HighlightScreen> {
           ),
           const Divider(height: 1),
           Padding(
-            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 8),
+            child: Column(
+              crossAxisAlignment: CrossAxisAlignment.start,
+              children: [
+                Text('切り出し方法', style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(height: 8),
+                SegmentedButton<ClipTrimMode>(
+                  segments: [
+                    for (final mode in ClipTrimMode.values)
+                      ButtonSegment(value: mode, label: Text(mode.label)),
+                  ],
+                  selected: {reel.trimMode},
+                  onSelectionChanged: (selection) =>
+                      reel.setTrimMode(selection.first),
+                ),
+              ],
+            ),
+          ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 0, 16, 4),
             child: Align(
               alignment: Alignment.centerLeft,
               child: Text(
-                '撮影した動画は自動で先頭1秒だけ切り取られ、ここに追加されます。'
-                '並び替えや削除で手動編集できます。',
+                '撮影した動画から選んだ方式で1秒だけ切り取られ、ここに追加されます'
+                '(切り替えは以降撮影分から適用されます)。並び替えや削除で手動編集できます。',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
