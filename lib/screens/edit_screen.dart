@@ -8,29 +8,42 @@ import 'package:flutter_colorpicker/flutter_colorpicker.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/app_font.dart';
+import '../models/compilation_library.dart';
+import '../models/download_quota.dart';
 import '../models/highlight_reel.dart';
 import '../models/sound_library.dart';
+import '../models/subscription_service.dart';
 import '../models/text_overlay.dart';
 import '../models/video_library.dart';
+import '../widgets/clip_management_section.dart';
+import '../widgets/compiled_preview_section.dart';
 import 'sound_library_screen.dart';
 
 class EditScreen extends StatefulWidget {
   const EditScreen({
     super.key,
-    required this.highlightReel,
+    required this.compilationLibrary,
     required this.soundLibrary,
     required this.videoLibrary,
+    required this.subscriptionService,
+    required this.downloadQuota,
   });
 
-  final HighlightReel highlightReel;
+  final CompilationLibrary compilationLibrary;
   final SoundLibrary soundLibrary;
   final VideoLibrary videoLibrary;
+  final SubscriptionService subscriptionService;
+  final DownloadQuota downloadQuota;
 
   @override
   State<EditScreen> createState() => _EditScreenState();
 }
 
 class _EditScreenState extends State<EditScreen> {
+  String _selectedId = 'current';
+  late HighlightReel _activeReel;
+  bool _loadingSelection = false;
+
   VideoPlayerController? _previewController;
   File? _previewFile;
   List<TextOverlay> _draftOverlays = [];
@@ -46,36 +59,62 @@ class _EditScreenState extends State<EditScreen> {
   @override
   void initState() {
     super.initState();
-    widget.highlightReel.addListener(_onReelChanged);
+    _activeReel = widget.compilationLibrary.current;
+    widget.compilationLibrary.addListener(_onLibraryChanged);
+    _activeReel.addListener(_onReelChanged);
     _syncFromReel();
     _loadPreview();
   }
 
   @override
   void dispose() {
-    widget.highlightReel.removeListener(_onReelChanged);
+    widget.compilationLibrary.removeListener(_onLibraryChanged);
+    _activeReel.removeListener(_onReelChanged);
     _previewController?.dispose();
     super.dispose();
+  }
+
+  void _onLibraryChanged() {
+    if (mounted) setState(() {});
   }
 
   void _onReelChanged() {
     if (!mounted) return;
     _syncFromReel();
-    if (widget.highlightReel.compiledFile?.path != _previewFile?.path) {
+    if (_activeReel.compiledFile?.path != _previewFile?.path) {
       _loadPreview();
     }
     setState(() {});
   }
 
   void _syncFromReel() {
-    _draftOverlays = widget.highlightReel.textOverlays;
+    _draftOverlays = _activeReel.textOverlays;
     for (final overlay in _draftOverlays) {
       _overlayKeys.putIfAbsent(overlay.id, () => GlobalKey());
     }
   }
 
+  Future<void> _selectCompilation(String id) async {
+    if (id == _selectedId || _loadingSelection) return;
+    setState(() {
+      _selectedId = id;
+      _loadingSelection = true;
+    });
+    final reel = await widget.compilationLibrary.reelFor(id);
+    if (!mounted) return;
+    _activeReel.removeListener(_onReelChanged);
+    reel.addListener(_onReelChanged);
+    setState(() {
+      _activeReel = reel;
+      _loadingSelection = false;
+      _overlayKeys.clear();
+    });
+    _syncFromReel();
+    await _loadPreview();
+  }
+
   Future<void> _loadPreview() async {
-    final file = widget.highlightReel.compiledFile;
+    final file = _activeReel.compiledFile;
     final oldController = _previewController;
     _previewController = null;
     _previewFile = file;
@@ -108,7 +147,7 @@ class _EditScreenState extends State<EditScreen> {
     final image = await boundary.toImage(pixelRatio: pixelRatio);
     final byteData = await image.toByteData(format: ui.ImageByteFormat.png);
     if (byteData == null) return;
-    final dir = await widget.highlightReel.textOverlayImagesDirectory();
+    final dir = await _activeReel.textOverlayImagesDirectory();
     final file = File('${dir.path}/${overlay.id}.png');
     await file.writeAsBytes(byteData.buffer.asUint8List());
     final updated = overlay.copyWith(
@@ -116,7 +155,7 @@ class _EditScreenState extends State<EditScreen> {
       renderedWidth: image.width,
       renderedHeight: image.height,
     );
-    await widget.highlightReel.upsertTextOverlay(updated);
+    await _activeReel.upsertTextOverlay(updated);
   }
 
   Future<void> _handleFormResult(TextOverlay overlay, {required bool isNew}) async {
@@ -136,7 +175,7 @@ class _EditScreenState extends State<EditScreen> {
   }
 
   Future<void> _addText() async {
-    final segments = widget.highlightReel.segments;
+    final segments = _activeReel.segments;
     if (segments.isEmpty) {
       ScaffoldMessenger.of(
         context,
@@ -167,7 +206,7 @@ class _EditScreenState extends State<EditScreen> {
   }
 
   Future<void> _editText(TextOverlay overlay) async {
-    final maxClipIndex = widget.highlightReel.segments.length - 1;
+    final maxClipIndex = _activeReel.segments.length - 1;
     if (maxClipIndex < 0) return;
     final result = await showModalBottomSheet<TextOverlay>(
       context: context,
@@ -186,7 +225,7 @@ class _EditScreenState extends State<EditScreen> {
       _draftOverlays = _draftOverlays.where((o) => o.id != overlay.id).toList();
       _overlayKeys.remove(overlay.id);
     });
-    await widget.highlightReel.removeTextOverlay(overlay.id);
+    await _activeReel.removeTextOverlay(overlay.id);
   }
 
   void _beginGesture(TextOverlay overlay) {
@@ -248,78 +287,254 @@ class _EditScreenState extends State<EditScreen> {
       ),
     );
     if (result == null) return;
-    await widget.highlightReel.setBgm(result.sound);
+    await _activeReel.setBgm(result.sound);
+  }
+
+  Future<void> _handleSaveAsNew() async {
+    final title = await _promptForText(
+      dialogTitle: 'まとめ動画を保存',
+      fieldLabel: 'タイトル(省略可)',
+      confirmLabel: '保存',
+    );
+    if (title == null) return;
+    final entry = await widget.compilationLibrary.saveCurrentAsNew(
+      title: title.isEmpty ? null : title,
+    );
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text('「${entry.title}」として保存しました')));
+  }
+
+  Future<void> _handleRename(String id, String currentTitle) async {
+    final title = await _promptForText(
+      dialogTitle: 'タイトルを変更',
+      fieldLabel: 'タイトル',
+      confirmLabel: '変更',
+      initialText: currentTitle,
+    );
+    if (title == null || title.isEmpty) return;
+    await widget.compilationLibrary.renameSaved(id, title);
+  }
+
+  Future<String?> _promptForText({
+    required String dialogTitle,
+    required String fieldLabel,
+    required String confirmLabel,
+    String initialText = '',
+  }) async {
+    final controller = TextEditingController(text: initialText);
+    final result = await showDialog<String>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: Text(dialogTitle),
+        content: TextField(
+          controller: controller,
+          autofocus: true,
+          decoration: InputDecoration(labelText: fieldLabel),
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(controller.text.trim()),
+            child: Text(confirmLabel),
+          ),
+        ],
+      ),
+    );
+    controller.dispose();
+    return result;
+  }
+
+  Future<void> _handleDeleteSaved(String id, String title) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('削除しますか?'),
+        content: Text('「$title」を削除します。この操作は取り消せません。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('削除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    if (_selectedId == id) {
+      await _selectCompilation('current');
+    }
+    await widget.compilationLibrary.deleteSaved(id);
   }
 
   @override
   Widget build(BuildContext context) {
-    final reel = widget.highlightReel;
+    final reel = _activeReel;
     return Scaffold(
-      appBar: AppBar(title: const Text('編集')),
-      body: ListView(
+      appBar: AppBar(
+        title: const Text('編集'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.save_alt),
+            tooltip: 'まとめ動画として保存',
+            onPressed: _handleSaveAsNew,
+          ),
+        ],
+      ),
+      body: Stack(
         children: [
-          if (reel.errorMessage != null)
-            Container(
-              width: double.infinity,
-              color: Colors.red.shade100,
-              padding: const EdgeInsets.all(12),
-              child: Text(reel.errorMessage!),
-            ),
-          if (reel.isProcessing) const LinearProgressIndicator(minHeight: 3),
-          _buildPreview(),
-          Padding(
-            padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
-            child: Column(
-              crossAxisAlignment: CrossAxisAlignment.start,
-              children: [
-                Text('BGM', style: Theme.of(context).textTheme.labelLarge),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: _handlePickBgm,
-                  icon: const Icon(Icons.music_note),
-                  label: Text(reel.bgmTitle ?? 'BGMなし'),
+          ListView(
+            children: [
+              _buildCompilationPicker(),
+              const Divider(height: 1),
+              if (reel.errorMessage != null)
+                Container(
+                  width: double.infinity,
+                  color: Colors.red.shade100,
+                  padding: const EdgeInsets.all(12),
+                  child: Text(reel.errorMessage!),
                 ),
-                const SizedBox(height: 20),
-                Row(
-                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+              if (reel.isProcessing)
+                const LinearProgressIndicator(minHeight: 3),
+              _buildPreview(),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: CompiledPreviewSection(
+                  reel: reel,
+                  subscriptionService: widget.subscriptionService,
+                  downloadQuota: widget.downloadQuota,
+                ),
+              ),
+              const Divider(height: 1),
+              ClipManagementSection(
+                reel: reel,
+                subscriptionService: widget.subscriptionService,
+              ),
+              const Divider(height: 1),
+              Padding(
+                padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
+                child: Column(
+                  crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text('テキスト', style: Theme.of(context).textTheme.labelLarge),
-                    FilledButton.tonalIcon(
-                      onPressed: _addText,
-                      icon: const Icon(Icons.add),
-                      label: const Text('追加'),
+                    Text('BGM', style: Theme.of(context).textTheme.labelLarge),
+                    const SizedBox(height: 8),
+                    OutlinedButton.icon(
+                      onPressed: _handlePickBgm,
+                      icon: const Icon(Icons.music_note),
+                      label: Text(reel.bgmTitle ?? 'BGMなし'),
+                    ),
+                    const SizedBox(height: 20),
+                    Row(
+                      mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                      children: [
+                        Text(
+                          'テキスト',
+                          style: Theme.of(context).textTheme.labelLarge,
+                        ),
+                        FilledButton.tonalIcon(
+                          onPressed: _addText,
+                          icon: const Icon(Icons.add),
+                          label: const Text('追加'),
+                        ),
+                      ],
+                    ),
+                    const SizedBox(height: 4),
+                    Text(
+                      'プレビュー上でドラッグして位置調整、ピンチで拡大縮小、2本指で回転できます。',
+                      style: Theme.of(context).textTheme.bodySmall,
                     ),
                   ],
                 ),
-                const SizedBox(height: 4),
-                Text(
-                  'プレビュー上でドラッグして位置調整、ピンチで拡大縮小、2本指で回転できます。',
-                  style: Theme.of(context).textTheme.bodySmall,
+              ),
+              if (_draftOverlays.isEmpty)
+                const Padding(
+                  padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+                  child: Text('まだテキストがありません'),
+                )
+              else
+                for (final overlay in _draftOverlays)
+                  ListTile(
+                    leading: Icon(Icons.text_fields, color: overlay.color),
+                    title: Text(overlay.text),
+                    subtitle: Text(
+                      '${AppFont.byId(overlay.fontId).displayName} / '
+                      '${overlay.startClipIndex + 1}〜${overlay.endClipIndex + 1}番目',
+                    ),
+                    onTap: () => _editText(overlay),
+                    trailing: IconButton(
+                      icon: const Icon(Icons.delete_outline),
+                      onPressed: () => _deleteText(overlay),
+                    ),
+                  ),
+              const SizedBox(height: 24),
+            ],
+          ),
+          if (_loadingSelection)
+            Positioned.fill(
+              child: ColoredBox(
+                color: Colors.black.withValues(alpha: 0.2),
+                child: const Center(child: CircularProgressIndicator()),
+              ),
+            ),
+        ],
+      ),
+    );
+  }
+
+  Widget _buildCompilationPicker() {
+    final library = widget.compilationLibrary;
+    return Padding(
+      padding: const EdgeInsets.fromLTRB(16, 16, 16, 4),
+      child: Column(
+        crossAxisAlignment: CrossAxisAlignment.start,
+        children: [
+          Text('編集するまとめ動画', style: Theme.of(context).textTheme.labelLarge),
+          const SizedBox(height: 8),
+          SingleChildScrollView(
+            scrollDirection: Axis.horizontal,
+            child: Row(
+              children: [
+                ChoiceChip(
+                  label: const Text('作成中のまとめ'),
+                  selected: _selectedId == 'current',
+                  onSelected: (_) => _selectCompilation('current'),
                 ),
+                for (final entry in library.saved) ...[
+                  const SizedBox(width: 8),
+                  InputChip(
+                    label: Text(entry.title),
+                    selected: _selectedId == entry.id,
+                    onPressed: () => _selectCompilation(entry.id),
+                    onDeleted: () => _handleDeleteSaved(entry.id, entry.title),
+                  ),
+                ],
               ],
             ),
           ),
-          if (_draftOverlays.isEmpty)
-            const Padding(
-              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
-              child: Text('まだテキストがありません'),
-            )
-          else
-            for (final overlay in _draftOverlays)
-              ListTile(
-                leading: Icon(Icons.text_fields, color: overlay.color),
-                title: Text(overlay.text),
-                subtitle: Text(
-                  '${AppFont.byId(overlay.fontId).displayName} / '
-                  '${overlay.startClipIndex + 1}〜${overlay.endClipIndex + 1}番目',
-                ),
-                onTap: () => _editText(overlay),
-                trailing: IconButton(
-                  icon: const Icon(Icons.delete_outline),
-                  onPressed: () => _deleteText(overlay),
-                ),
+          if (_selectedId != 'current') ...[
+            const SizedBox(height: 4),
+            Align(
+              alignment: Alignment.centerLeft,
+              child: TextButton.icon(
+                onPressed: () {
+                  final entry = library.saved
+                      .where((c) => c.id == _selectedId)
+                      .firstOrNull;
+                  if (entry == null) return;
+                  _handleRename(entry.id, entry.title);
+                },
+                icon: const Icon(Icons.edit, size: 16),
+                label: const Text('タイトルを変更'),
               ),
-          const SizedBox(height: 24),
+            ),
+          ],
         ],
       ),
     );

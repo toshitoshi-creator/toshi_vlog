@@ -1,8 +1,8 @@
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
+import 'models/compilation_library.dart';
 import 'models/download_quota.dart';
-import 'models/highlight_reel.dart';
 import 'models/sound_library.dart';
 import 'models/subscription_service.dart';
 import 'models/video_library.dart';
@@ -42,7 +42,7 @@ class RootScreen extends StatefulWidget {
 
 class _RootScreenState extends State<RootScreen> {
   final VideoLibrary _videoLibrary = VideoLibrary();
-  final HighlightReel _highlightReel = HighlightReel();
+  final CompilationLibrary _compilationLibrary = CompilationLibrary();
   final SubscriptionService _subscriptionService = SubscriptionService();
   final DownloadQuota _downloadQuota = DownloadQuota();
   final SoundLibrary _soundLibrary = SoundLibrary();
@@ -51,7 +51,7 @@ class _RootScreenState extends State<RootScreen> {
   @override
   void initState() {
     super.initState();
-    _highlightReel.load();
+    _compilationLibrary.load();
     _subscriptionService.init();
     _downloadQuota.load();
     _soundLibrary.load();
@@ -60,7 +60,7 @@ class _RootScreenState extends State<RootScreen> {
   @override
   void dispose() {
     _videoLibrary.dispose();
-    _highlightReel.dispose();
+    _compilationLibrary.dispose();
     _subscriptionService.dispose();
     _downloadQuota.dispose();
     _soundLibrary.dispose();
@@ -70,16 +70,21 @@ class _RootScreenState extends State<RootScreen> {
   @override
   Widget build(BuildContext context) {
     final screens = [
-      CameraScreen(videoLibrary: _videoLibrary, highlightReel: _highlightReel),
+      CameraScreen(
+        videoLibrary: _videoLibrary,
+        highlightReel: _compilationLibrary.current,
+      ),
       HighlightScreen(
-        highlightReel: _highlightReel,
+        compilationLibrary: _compilationLibrary,
         subscriptionService: _subscriptionService,
         downloadQuota: _downloadQuota,
       ),
       EditScreen(
-        highlightReel: _highlightReel,
+        compilationLibrary: _compilationLibrary,
         soundLibrary: _soundLibrary,
         videoLibrary: _videoLibrary,
+        subscriptionService: _subscriptionService,
+        downloadQuota: _downloadQuota,
       ),
       MediaScreen(videoLibrary: _videoLibrary),
     ];

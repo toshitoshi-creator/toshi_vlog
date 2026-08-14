@@ -20,6 +20,15 @@ import 'text_overlay.dart';
 /// edited manually, individual segments can be re-trimmed via [redo], and
 /// clips can be removed.
 class HighlightReel extends ChangeNotifier {
+  /// [id] selects this reel's storage directory. `'current'` is the
+  /// always-existing, currently-being-built まとめ動画 and keeps the
+  /// original fixed path for backward compatibility with existing installs;
+  /// any other id is a saved snapshot living under its own subdirectory (see
+  /// [CompilationLibrary]).
+  HighlightReel({this.id = 'current'});
+
+  final String id;
+
   /// The compiled video's fixed resolution; text overlay positions/sizes
   /// are normalized against this so the editor preview and the ffmpeg
   /// export agree regardless of the preview widget's on-screen size.
@@ -49,7 +58,9 @@ class HighlightReel extends ChangeNotifier {
 
   Future<Directory> _highlightsDirectory() async {
     final documentsDir = await getApplicationDocumentsDirectory();
-    final dir = Directory('${documentsDir.path}/highlights');
+    final dir = id == 'current'
+        ? Directory('${documentsDir.path}/highlights')
+        : Directory('${documentsDir.path}/compilations/$id');
     if (!await dir.exists()) {
       await dir.create(recursive: true);
     }
@@ -556,5 +567,79 @@ class HighlightReel extends ChangeNotifier {
     }
     await tempOutput.rename(output.path);
     _compiledFile = output;
+  }
+
+  /// Deep-copies this reel's full state (segments, text overlays, trim
+  /// settings, BGM reference) into [target], which must be a distinct,
+  /// freshly-constructed reel. Segment and overlay-image files are copied
+  /// into [target]'s own directory rather than shared, so the two reels can
+  /// be edited independently afterwards. The BGM file itself lives in
+  /// [SoundLibrary]'s directory and is safe to reference from both.
+  Future<void> cloneInto(HighlightReel target) => target._guarded(() async {
+    final targetSegmentsDir = await target._segmentsDirectory();
+    final newSegments = <HighlightSegment>[];
+    for (final segment in _segments) {
+      final newFile = File('${targetSegmentsDir.path}/${segment.id}.mp4');
+      if (await segment.file.exists()) {
+        await segment.file.copy(newFile.path);
+      }
+      newSegments.add(
+        HighlightSegment(
+          id: segment.id,
+          file: newFile,
+          sourcePath: segment.sourcePath,
+          createdAt: segment.createdAt,
+          redoCount: segment.redoCount,
+        ),
+      );
+    }
+
+    final targetTextDir = await target.textOverlayImagesDirectory();
+    final newOverlays = <TextOverlay>[];
+    for (final overlay in _textOverlays) {
+      final sourcePath = overlay.renderedImagePath;
+      final sourceImage = sourcePath == null ? null : File(sourcePath);
+      if (sourceImage == null || !await sourceImage.exists()) continue;
+      final newImage = File('${targetTextDir.path}/${overlay.id}.png');
+      await sourceImage.copy(newImage.path);
+      newOverlays.add(
+        TextOverlay(
+          id: overlay.id,
+          text: overlay.text,
+          fontId: overlay.fontId,
+          fontSize: overlay.fontSize,
+          color: overlay.color,
+          x: overlay.x,
+          y: overlay.y,
+          rotationDegrees: overlay.rotationDegrees,
+          startClipIndex: overlay.startClipIndex,
+          endClipIndex: overlay.endClipIndex,
+          renderedImagePath: newImage.path,
+          renderedWidth: overlay.renderedWidth,
+          renderedHeight: overlay.renderedHeight,
+        ),
+      );
+    }
+
+    target._segments = newSegments;
+    target._textOverlays = newOverlays;
+    target._trimMode = _trimMode;
+    target._clipDuration = _clipDuration;
+    target._bgmFile = _bgmFile;
+    target._bgmTitle = _bgmTitle;
+
+    await target._persistManifest();
+    await target._persistSettings();
+    await target._persistTextOverlays();
+    await target._recompose();
+  }, 'まとめ動画の保存に失敗しました');
+
+  /// Deletes this reel's entire storage directory. Only meaningful for
+  /// non-`'current'` (saved) reels.
+  Future<void> deleteStorage() async {
+    final dir = await _highlightsDirectory();
+    if (await dir.exists()) {
+      await dir.delete(recursive: true);
+    }
   }
 }
