@@ -1,3 +1,4 @@
+import 'dart:async';
 import 'dart:convert';
 import 'dart:io';
 
@@ -9,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 import '../models/highlight_reel.dart';
 import '../models/video_library.dart';
 import '../widgets/camera_controls.dart';
+import 'recording_preview_screen.dart';
 
 class CameraScreen extends StatefulWidget {
   const CameraScreen({
@@ -43,6 +45,12 @@ class _CameraScreenState extends State<CameraScreen>
 
   bool _isImportingFromGallery = false;
 
+  static const _maxRecordingDuration = Duration(seconds: 5);
+  Timer? _autoStopTimer;
+  Timer? _recordingTickTimer;
+  DateTime? _recordingStartedAt;
+  Duration _recordingElapsed = Duration.zero;
+
   @override
   void initState() {
     super.initState();
@@ -58,6 +66,8 @@ class _CameraScreenState extends State<CameraScreen>
   @override
   void dispose() {
     WidgetsBinding.instance.removeObserver(this);
+    _autoStopTimer?.cancel();
+    _recordingTickTimer?.cancel();
     _controller?.dispose();
     super.dispose();
   }
@@ -68,6 +78,9 @@ class _CameraScreenState extends State<CameraScreen>
     if (controller == null || !controller.value.isInitialized) return;
     if (state == AppLifecycleState.inactive ||
         state == AppLifecycleState.paused) {
+      _autoStopTimer?.cancel();
+      _recordingTickTimer?.cancel();
+      _isRecording = false;
       controller.dispose();
     } else if (state == AppLifecycleState.resumed) {
       _initializeController(_cameras[_cameraIndex]);
@@ -135,24 +148,68 @@ class _CameraScreenState extends State<CameraScreen>
     if (controller == null || !controller.value.isInitialized) return;
 
     if (_isRecording) {
-      try {
-        final file = await controller.stopVideoRecording();
-        final savedFile = await widget.videoLibrary.store(file.path);
-        // Trims the first second into the highlight reel in the background;
-        // errors surface via HighlightReel.errorMessage on the まとめ tab.
-        widget.highlightReel.addClip(savedFile);
-      } catch (_) {
-        if (mounted) setState(() => _errorMessage = '録画の保存に失敗しました');
-      } finally {
-        if (mounted) setState(() => _isRecording = false);
-      }
+      await _stopRecordingAndReview();
     } else {
       try {
         await controller.startVideoRecording();
-        setState(() => _isRecording = true);
+        _recordingStartedAt = DateTime.now();
+        setState(() {
+          _isRecording = true;
+          _recordingElapsed = Duration.zero;
+        });
+        _autoStopTimer = Timer(_maxRecordingDuration, _stopRecordingAndReview);
+        _recordingTickTimer = Timer.periodic(
+          const Duration(milliseconds: 200),
+          (_) {
+            final startedAt = _recordingStartedAt;
+            if (!mounted || startedAt == null) return;
+            setState(
+              () => _recordingElapsed = DateTime.now().difference(startedAt),
+            );
+          },
+        );
       } catch (_) {
         if (mounted) setState(() => _errorMessage = '録画を開始できませんでした');
       }
+    }
+  }
+
+  Future<void> _stopRecordingAndReview() async {
+    final controller = _controller;
+    if (controller == null || !_isRecording) return;
+
+    _autoStopTimer?.cancel();
+    _autoStopTimer = null;
+    _recordingTickTimer?.cancel();
+    _recordingTickTimer = null;
+    _recordingStartedAt = null;
+
+    try {
+      final recorded = await controller.stopVideoRecording();
+      if (mounted) setState(() => _isRecording = false);
+
+      if (!mounted) return;
+      final shouldSave = await Navigator.of(context).push<bool>(
+        MaterialPageRoute(
+          builder: (_) => RecordingPreviewScreen(file: File(recorded.path)),
+        ),
+      );
+
+      if (shouldSave == true) {
+        final savedFile = await widget.videoLibrary.store(recorded.path);
+        // Trims the first second into the highlight reel in the background;
+        // errors surface via HighlightReel.errorMessage on the まとめ tab.
+        widget.highlightReel.addClip(savedFile);
+      } else {
+        final tempFile = File(recorded.path);
+        if (await tempFile.exists()) {
+          await tempFile.delete();
+        }
+      }
+    } catch (_) {
+      if (mounted) setState(() => _errorMessage = '録画の保存に失敗しました');
+    } finally {
+      if (mounted) setState(() => _isRecording = false);
     }
   }
 
@@ -391,7 +448,9 @@ class _CameraScreenState extends State<CameraScreen>
                     ),
                     const SizedBox(height: 8),
                     Text(
-                      _isRecording ? 'タップで録画終了' : 'タップで録画開始',
+                      _isRecording
+                          ? '残り${(_maxRecordingDuration - _recordingElapsed).inSeconds.clamp(0, 5)}秒 (タップで終了)'
+                          : 'タップで録画開始 (最大5秒)',
                       style: const TextStyle(color: Colors.white70),
                     ),
                     const SizedBox(height: 12),
