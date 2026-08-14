@@ -11,6 +11,7 @@ import 'package:path_provider/path_provider.dart';
 import 'clip_trim_mode.dart';
 import 'highlight_segment.dart';
 import 'saved_sound.dart';
+import 'text_overlay.dart';
 
 /// Keeps a running "N seconds per clip" highlight reel: every time a full
 /// recording is added, a window of it (length [clipDuration], chosen per
@@ -19,6 +20,12 @@ import 'saved_sound.dart';
 /// edited manually, individual segments can be re-trimmed via [redo], and
 /// clips can be removed.
 class HighlightReel extends ChangeNotifier {
+  /// The compiled video's fixed resolution; text overlay positions/sizes
+  /// are normalized against this so the editor preview and the ffmpeg
+  /// export agree regardless of the preview widget's on-screen size.
+  static const canvasWidth = 720;
+  static const canvasHeight = 1280;
+
   List<HighlightSegment> _segments = [];
   File? _compiledFile;
   bool _isProcessing = false;
@@ -28,6 +35,7 @@ class HighlightReel extends ChangeNotifier {
   final _random = Random();
   File? _bgmFile;
   String? _bgmTitle;
+  List<TextOverlay> _textOverlays = [];
 
   List<HighlightSegment> get segments => List.unmodifiable(_segments);
   File? get compiledFile => _compiledFile;
@@ -37,6 +45,7 @@ class HighlightReel extends ChangeNotifier {
   Duration get clipDuration => _clipDuration;
   File? get bgmFile => _bgmFile;
   String? get bgmTitle => _bgmTitle;
+  List<TextOverlay> get textOverlays => List.unmodifiable(_textOverlays);
 
   Future<Directory> _highlightsDirectory() async {
     final documentsDir = await getApplicationDocumentsDirectory();
@@ -56,6 +65,16 @@ class HighlightReel extends ChangeNotifier {
     return dir;
   }
 
+  /// Directory for text-overlay PNG snapshots rendered by the editor.
+  Future<Directory> textOverlayImagesDirectory() async {
+    final highlightsDir = await _highlightsDirectory();
+    final dir = Directory('${highlightsDir.path}/text_overlays');
+    if (!await dir.exists()) {
+      await dir.create(recursive: true);
+    }
+    return dir;
+  }
+
   Future<File> _manifestFile() async {
     final dir = await _highlightsDirectory();
     return File('${dir.path}/manifest.json');
@@ -64,6 +83,11 @@ class HighlightReel extends ChangeNotifier {
   Future<File> _settingsFile() async {
     final dir = await _highlightsDirectory();
     return File('${dir.path}/settings.json');
+  }
+
+  Future<File> _textOverlaysFile() async {
+    final dir = await _highlightsDirectory();
+    return File('${dir.path}/text_overlays.json');
   }
 
   Future<File> _compiledOutputFile() async {
@@ -110,6 +134,19 @@ class HighlightReel extends ChangeNotifier {
       }
     }
 
+    final textOverlaysFile = await _textOverlaysFile();
+    if (await textOverlaysFile.exists()) {
+      try {
+        final raw =
+            jsonDecode(await textOverlaysFile.readAsString()) as List<dynamic>;
+        _textOverlays = raw
+            .map((e) => TextOverlay.fromJson(e as Map<String, dynamic>))
+            .toList();
+      } catch (_) {
+        _textOverlays = [];
+      }
+    }
+
     final output = await _compiledOutputFile();
     _compiledFile = await output.exists() ? output : null;
     notifyListeners();
@@ -142,6 +179,36 @@ class HighlightReel extends ChangeNotifier {
     await _recompose();
   }, 'BGMの設定に失敗しました');
 
+  /// Adds a new caption or updates an existing one (matched by id).
+  /// [overlay] must already have [TextOverlay.renderedImagePath] set to a
+  /// PNG snapshot rendered by the editor.
+  Future<void> upsertTextOverlay(TextOverlay overlay) => _guarded(() async {
+    final index = _textOverlays.indexWhere((o) => o.id == overlay.id);
+    _textOverlays = [
+      if (index < 0) ..._textOverlays else ...[
+        ..._textOverlays.sublist(0, index),
+        ..._textOverlays.sublist(index + 1),
+      ],
+      overlay,
+    ];
+    await _persistTextOverlays();
+    await _recompose();
+  }, 'テキストの保存に失敗しました');
+
+  Future<void> removeTextOverlay(String id) => _guarded(() async {
+    final removed = _textOverlays.where((o) => o.id == id).toList();
+    _textOverlays = _textOverlays.where((o) => o.id != id).toList();
+    for (final overlay in removed) {
+      final path = overlay.renderedImagePath;
+      if (path != null) {
+        final file = File(path);
+        if (await file.exists()) await file.delete();
+      }
+    }
+    await _persistTextOverlays();
+    await _recompose();
+  }, 'テキストの削除に失敗しました');
+
   Future<void> _persistSettings() async {
     final settings = await _settingsFile();
     await settings.writeAsString(
@@ -158,6 +225,13 @@ class HighlightReel extends ChangeNotifier {
     final manifest = await _manifestFile();
     final raw = jsonEncode(_segments.map((s) => s.toJson()).toList());
     await manifest.writeAsString(raw);
+  }
+
+  Future<void> _persistTextOverlays() async {
+    final file = await _textOverlaysFile();
+    await file.writeAsString(
+      jsonEncode(_textOverlays.map((o) => o.toJson()).toList()),
+    );
   }
 
   Future<void> addClip(File sourceClip) => _guarded(() async {
@@ -255,6 +329,19 @@ class HighlightReel extends ChangeNotifier {
     return Duration(milliseconds: (seconds * 1000).round());
   }
 
+  /// Cumulative start time of each segment, plus a final entry for the
+  /// total duration. `starts[i]` is when segment `i` begins;
+  /// `starts[segments.length]` is the total compiled (pre-BGM/text) length.
+  Future<List<Duration>> _segmentStartTimes() async {
+    final starts = <Duration>[Duration.zero];
+    var cursor = Duration.zero;
+    for (final segment in _segments) {
+      cursor += await _probeDuration(segment.file);
+      starts.add(cursor);
+    }
+    return starts;
+  }
+
   Future<Duration> _computeStartOffset(File source, {int rank = 0}) async {
     switch (_trimMode) {
       case ClipTrimMode.start:
@@ -325,8 +412,8 @@ class HighlightReel extends ChangeNotifier {
       '-i', source.path,
       '-t', (_clipDuration.inMilliseconds / 1000).toStringAsFixed(2),
       '-vf',
-      'scale=w=720:h=1280:force_original_aspect_ratio=decrease,'
-          'pad=720:1280:(ow-iw)/2:(oh-ih)/2,setsar=1',
+      'scale=w=$canvasWidth:h=$canvasHeight:force_original_aspect_ratio=decrease,'
+          'pad=$canvasWidth:$canvasHeight:(ow-iw)/2:(oh-ih)/2,setsar=1',
       '-r', '30',
       '-c:v', 'libx264',
       '-preset', 'veryfast',
@@ -378,18 +465,19 @@ class HighlightReel extends ChangeNotifier {
       throw Exception('ffmpeg concat failed');
     }
 
-    final tempOutput = File('${output.path}.tmp.mp4');
-    if (await tempOutput.exists()) {
-      await tempOutput.delete();
-    }
+    File current = concatOutput;
 
     final bgm = _bgmFile;
     if (bgm != null && await bgm.exists()) {
       // Loops the BGM to cover the whole video and replaces each clip's
       // original audio with it, trimmed to the video's length.
+      final bgmOutput = File('${highlightsDir.path}/with_bgm.mp4');
+      if (await bgmOutput.exists()) {
+        await bgmOutput.delete();
+      }
       final muxSession = await FFmpegKit.executeWithArguments([
         '-y',
-        '-i', concatOutput.path,
+        '-i', current.path,
         '-stream_loop', '-1',
         '-i', bgm.path,
         '-map', '0:v:0',
@@ -397,14 +485,71 @@ class HighlightReel extends ChangeNotifier {
         '-c:v', 'copy',
         '-c:a', 'aac',
         '-shortest',
-        tempOutput.path,
+        bgmOutput.path,
       ]);
       if (!ReturnCode.isSuccess(await muxSession.getReturnCode())) {
         throw Exception('ffmpeg bgm mux failed');
       }
-    } else {
-      await concatOutput.copy(tempOutput.path);
+      current = bgmOutput;
     }
+
+    final renderedOverlays = _textOverlays
+        .where((o) => o.renderedImagePath != null)
+        .toList();
+    if (renderedOverlays.isNotEmpty) {
+      final starts = await _segmentStartTimes();
+      final totalSeconds = starts.last.inMilliseconds / 1000;
+      var step = 0;
+      for (final overlay in renderedOverlays) {
+        final image = File(overlay.renderedImagePath!);
+        if (!await image.exists()) continue;
+
+        final startIdx = overlay.startClipIndex.clamp(0, _segments.length);
+        final endIdx = (overlay.endClipIndex + 1).clamp(0, _segments.length);
+        final startSeconds = starts[startIdx].inMilliseconds / 1000;
+        final endSeconds = starts[endIdx].inMilliseconds / 1000;
+
+        final stepOutput = File('${highlightsDir.path}/text_step_$step.mp4');
+        if (await stepOutput.exists()) {
+          await stepOutput.delete();
+        }
+
+        final width = overlay.renderedWidth ?? 0;
+        final height = overlay.renderedHeight ?? 0;
+        final px = (overlay.x * canvasWidth - width / 2).round();
+        final py = (overlay.y * canvasHeight - height / 2).round();
+
+        final filter =
+            "[0:v][1:v]overlay=x=$px:y=$py:enable='between(t\\,"
+            '${startSeconds.toStringAsFixed(2)}\\,'
+            "${endSeconds.toStringAsFixed(2)})'[outv]";
+
+        final session = await FFmpegKit.executeWithArguments([
+          '-y',
+          '-i', current.path,
+          '-loop', '1',
+          '-framerate', '30',
+          '-t', totalSeconds.toStringAsFixed(2),
+          '-i', image.path,
+          '-filter_complex', filter,
+          '-map', '[outv]',
+          '-map', '0:a?',
+          '-c:a', 'copy',
+          stepOutput.path,
+        ]);
+        if (!ReturnCode.isSuccess(await session.getReturnCode())) {
+          throw Exception('ffmpeg text overlay failed');
+        }
+        current = stepOutput;
+        step++;
+      }
+    }
+
+    final tempOutput = File('${output.path}.tmp.mp4');
+    if (await tempOutput.exists()) {
+      await tempOutput.delete();
+    }
+    await current.copy(tempOutput.path);
 
     if (await output.exists()) {
       await output.delete();

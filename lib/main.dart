@@ -7,6 +7,7 @@ import 'models/sound_library.dart';
 import 'models/subscription_service.dart';
 import 'models/video_library.dart';
 import 'screens/camera_screen.dart';
+import 'screens/edit_screen.dart';
 import 'screens/highlight_screen.dart';
 import 'screens/media_screen.dart';
 
@@ -74,6 +75,9 @@ class _RootScreenState extends State<RootScreen> {
         highlightReel: _highlightReel,
         subscriptionService: _subscriptionService,
         downloadQuota: _downloadQuota,
+      ),
+      EditScreen(
+        highlightReel: _highlightReel,
         soundLibrary: _soundLibrary,
         videoLibrary: _videoLibrary,
       ),
@@ -91,6 +95,7 @@ class _RootScreenState extends State<RootScreen> {
             icon: Icon(Icons.movie_creation_outlined),
             label: 'まとめ',
           ),
+          NavigationDestination(icon: Icon(Icons.edit), label: '編集'),
           NavigationDestination(icon: Icon(Icons.photo_library), label: 'メディア'),
         ],
       ),

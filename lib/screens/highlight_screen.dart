@@ -6,12 +6,9 @@ import 'package:gal/gal.dart';
 import '../models/clip_trim_mode.dart';
 import '../models/download_quota.dart';
 import '../models/highlight_reel.dart';
-import '../models/sound_library.dart';
 import '../models/subscription_service.dart';
-import '../models/video_library.dart';
 import '../widgets/video_thumbnail.dart';
 import 'paywall_screen.dart';
-import 'sound_library_screen.dart';
 import 'video_player_screen.dart';
 
 class HighlightScreen extends StatefulWidget {
@@ -20,15 +17,11 @@ class HighlightScreen extends StatefulWidget {
     required this.highlightReel,
     required this.subscriptionService,
     required this.downloadQuota,
-    required this.soundLibrary,
-    required this.videoLibrary,
   });
 
   final HighlightReel highlightReel;
   final SubscriptionService subscriptionService;
   final DownloadQuota downloadQuota;
-  final SoundLibrary soundLibrary;
-  final VideoLibrary videoLibrary;
 
   @override
   State<HighlightScreen> createState() => _HighlightScreenState();
@@ -72,19 +65,6 @@ class _HighlightScreenState extends State<HighlightScreen> {
             PaywallScreen(subscriptionService: widget.subscriptionService),
       ),
     );
-  }
-
-  Future<void> _handlePickBgm() async {
-    final result = await Navigator.of(context).push<SoundSelection>(
-      MaterialPageRoute(
-        builder: (_) => SoundLibraryScreen(
-          soundLibrary: widget.soundLibrary,
-          videoLibrary: widget.videoLibrary,
-        ),
-      ),
-    );
-    if (result == null) return;
-    await widget.highlightReel.setBgm(result.sound);
   }
 
   Future<void> _handleDownload(File file) async {
@@ -192,14 +172,6 @@ class _HighlightScreenState extends State<HighlightScreen> {
                   selected: {reel.clipDuration},
                   onSelectionChanged: (selection) =>
                       reel.setClipDuration(selection.first),
-                ),
-                const SizedBox(height: 16),
-                Text('BGM', style: Theme.of(context).textTheme.labelLarge),
-                const SizedBox(height: 8),
-                OutlinedButton.icon(
-                  onPressed: _handlePickBgm,
-                  icon: const Icon(Icons.music_note),
-                  label: Text(reel.bgmTitle ?? 'BGMなし'),
                 ),
               ],
             ),
