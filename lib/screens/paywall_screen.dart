@@ -12,6 +12,10 @@ class PaywallScreen extends StatefulWidget {
 }
 
 class _PaywallScreenState extends State<PaywallScreen> {
+  final _codeController = TextEditingController();
+  String? _codeError;
+  bool _isRedeeming = false;
+
   @override
   void initState() {
     super.initState();
@@ -21,6 +25,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
   @override
   void dispose() {
     widget.subscriptionService.removeListener(_onChanged);
+    _codeController.dispose();
     super.dispose();
   }
 
@@ -33,6 +38,23 @@ class _PaywallScreenState extends State<PaywallScreen> {
     setState(() {});
   }
 
+  Future<void> _redeemCode() async {
+    final code = _codeController.text.trim();
+    if (code.isEmpty) return;
+    setState(() {
+      _isRedeeming = true;
+      _codeError = null;
+    });
+    final success = await widget.subscriptionService.unlockWithInviteCode(
+      code,
+    );
+    if (!mounted) return;
+    setState(() {
+      _isRedeeming = false;
+      _codeError = success ? null : 'コードが正しくありません';
+    });
+  }
+
   @override
   Widget build(BuildContext context) {
     final service = widget.subscriptionService;
@@ -40,7 +62,7 @@ class _PaywallScreenState extends State<PaywallScreen> {
 
     return Scaffold(
       appBar: AppBar(title: const Text('プレミアムプラン')),
-      body: Padding(
+      body: SingleChildScrollView(
         padding: const EdgeInsets.all(24),
         child: Column(
           crossAxisAlignment: CrossAxisAlignment.stretch,
@@ -86,6 +108,35 @@ class _PaywallScreenState extends State<PaywallScreen> {
                 textAlign: TextAlign.center,
               ),
             ],
+            const SizedBox(height: 32),
+            const Divider(),
+            const SizedBox(height: 16),
+            Text(
+              '招待コードをお持ちの場合',
+              style: Theme.of(context).textTheme.labelLarge,
+              textAlign: TextAlign.center,
+            ),
+            const SizedBox(height: 8),
+            TextField(
+              controller: _codeController,
+              decoration: InputDecoration(
+                labelText: '招待コード',
+                errorText: _codeError,
+              ),
+              textInputAction: TextInputAction.done,
+              onSubmitted: (_) => _redeemCode(),
+            ),
+            const SizedBox(height: 12),
+            OutlinedButton(
+              onPressed: _isRedeeming ? null : _redeemCode,
+              child: _isRedeeming
+                  ? const SizedBox(
+                      width: 20,
+                      height: 20,
+                      child: CircularProgressIndicator(strokeWidth: 2),
+                    )
+                  : const Text('コードを適用'),
+            ),
           ],
         ),
       ),

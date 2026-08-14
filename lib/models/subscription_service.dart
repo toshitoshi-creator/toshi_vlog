@@ -16,6 +16,11 @@ import 'package:path_provider/path_provider.dart';
 class SubscriptionService extends ChangeNotifier {
   static const productId = 'com.toshivlog.toshiVlog.premium_monthly';
 
+  /// Hardcoded testing/invite code that unlocks premium locally, bypassing
+  /// the store entirely. Meant for TestFlight builds before the real
+  /// subscription product is configured in App Store Connect.
+  static const inviteCode = 'toshi_vlog_inv';
+
   final InAppPurchase _iap = InAppPurchase.instance;
   StreamSubscription<List<PurchaseDetails>>? _subscription;
 
@@ -71,6 +76,16 @@ class SubscriptionService extends ChangeNotifier {
     }
   }
 
+  /// Unlocks premium locally if [code] matches [inviteCode]. Returns whether
+  /// it matched. Does not touch the store purchase state.
+  Future<bool> unlockWithInviteCode(String code) async {
+    if (code.trim() != inviteCode) return false;
+    _errorMessage = null;
+    await _setPremium(true, source: 'invite_code');
+    notifyListeners();
+    return true;
+  }
+
   Future<void> restore() async {
     _purchasePending = true;
     notifyListeners();
@@ -120,10 +135,10 @@ class SubscriptionService extends ChangeNotifier {
     }
   }
 
-  Future<void> _setPremium(bool value) async {
+  Future<void> _setPremium(bool value, {String source = 'store'}) async {
     _isPremium = value;
     final file = await _entitlementFile();
-    await file.writeAsString(jsonEncode({'isPremium': value}));
+    await file.writeAsString(jsonEncode({'isPremium': value, 'source': source}));
   }
 
   @override
