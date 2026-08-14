@@ -3,6 +3,7 @@ import 'dart:io';
 
 import 'package:camera/camera.dart';
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:path_provider/path_provider.dart';
 
 import '../models/highlight_reel.dart';
@@ -39,6 +40,8 @@ class _CameraScreenState extends State<CameraScreen>
 
   ResolutionPreset _resolutionPreset = ResolutionPreset.high;
   int _fps = 30;
+
+  bool _isImportingFromGallery = false;
 
   @override
   void initState() {
@@ -150,6 +153,23 @@ class _CameraScreenState extends State<CameraScreen>
       } catch (_) {
         if (mounted) setState(() => _errorMessage = '録画を開始できませんでした');
       }
+    }
+  }
+
+  Future<void> _pickFromGallery() async {
+    if (_isImportingFromGallery || _isRecording) return;
+    final picker = ImagePicker();
+    final XFile? picked = await picker.pickVideo(source: ImageSource.gallery);
+    if (picked == null) return;
+
+    setState(() => _isImportingFromGallery = true);
+    try {
+      final savedFile = await widget.videoLibrary.store(picked.path);
+      widget.highlightReel.addClip(savedFile);
+    } catch (_) {
+      if (mounted) setState(() => _errorMessage = '動画を取り込めませんでした');
+    } finally {
+      if (mounted) setState(() => _isImportingFromGallery = false);
     }
   }
 
@@ -378,7 +398,11 @@ class _CameraScreenState extends State<CameraScreen>
                     Row(
                       mainAxisAlignment: MainAxisAlignment.center,
                       children: [
-                        const SizedBox(width: 56),
+                        GalleryPickerButton(
+                          enabled: !_isRecording && !_isImportingFromGallery,
+                          isLoading: _isImportingFromGallery,
+                          onTap: _pickFromGallery,
+                        ),
                         const Spacer(),
                         RecordButton(
                           isRecording: _isRecording,

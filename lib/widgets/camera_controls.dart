@@ -67,6 +67,40 @@ class SwitchCameraButton extends StatelessWidget {
   }
 }
 
+class GalleryPickerButton extends StatelessWidget {
+  const GalleryPickerButton({
+    super.key,
+    required this.enabled,
+    required this.isLoading,
+    required this.onTap,
+  });
+
+  final bool enabled;
+  final bool isLoading;
+  final VoidCallback onTap;
+
+  @override
+  Widget build(BuildContext context) {
+    return IconButton(
+      onPressed: enabled ? onTap : null,
+      icon: isLoading
+          ? const SizedBox(
+              width: 20,
+              height: 20,
+              child: CircularProgressIndicator(
+                strokeWidth: 2,
+                color: Colors.white,
+              ),
+            )
+          : const Icon(Icons.photo_library, color: Colors.white),
+      style: IconButton.styleFrom(
+        backgroundColor: Colors.black.withValues(alpha: 0.4),
+        fixedSize: const Size(56, 56),
+      ),
+    );
+  }
+}
+
 /// Small round icon button used for the flash toggle and settings entry
 /// point in the top bar of the camera screen.
 class TopIconButton extends StatelessWidget {

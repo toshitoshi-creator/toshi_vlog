@@ -10,6 +10,7 @@ import 'package:path_provider/path_provider.dart';
 
 import 'clip_trim_mode.dart';
 import 'highlight_segment.dart';
+import 'saved_sound.dart';
 
 /// Keeps a running "N seconds per clip" highlight reel: every time a full
 /// recording is added, a window of it (length [clipDuration], chosen per
@@ -25,6 +26,8 @@ class HighlightReel extends ChangeNotifier {
   ClipTrimMode _trimMode = ClipTrimMode.random;
   Duration _clipDuration = const Duration(seconds: 1);
   final _random = Random();
+  File? _bgmFile;
+  String? _bgmTitle;
 
   List<HighlightSegment> get segments => List.unmodifiable(_segments);
   File? get compiledFile => _compiledFile;
@@ -32,6 +35,8 @@ class HighlightReel extends ChangeNotifier {
   String? get errorMessage => _errorMessage;
   ClipTrimMode get trimMode => _trimMode;
   Duration get clipDuration => _clipDuration;
+  File? get bgmFile => _bgmFile;
+  String? get bgmTitle => _bgmTitle;
 
   Future<Directory> _highlightsDirectory() async {
     final documentsDir = await getApplicationDocumentsDirectory();
@@ -95,6 +100,11 @@ class HighlightReel extends ChangeNotifier {
         if (durationMs != null && durationMs > 0) {
           _clipDuration = Duration(milliseconds: durationMs);
         }
+        final bgmPath = raw['bgmPath'] as String?;
+        if (bgmPath != null && File(bgmPath).existsSync()) {
+          _bgmFile = File(bgmPath);
+          _bgmTitle = raw['bgmTitle'] as String?;
+        }
       } catch (_) {
         // Keep the defaults.
       }
@@ -123,12 +133,23 @@ class HighlightReel extends ChangeNotifier {
     await _persistSettings();
   }
 
+  /// Sets or clears the background music track mixed into the compiled
+  /// video, replacing each clip's original audio. Pass `null` to remove it.
+  Future<void> setBgm(SavedSound? sound) => _guarded(() async {
+    _bgmFile = sound?.file;
+    _bgmTitle = sound?.title;
+    await _persistSettings();
+    await _recompose();
+  }, 'BGMの設定に失敗しました');
+
   Future<void> _persistSettings() async {
     final settings = await _settingsFile();
     await settings.writeAsString(
       jsonEncode({
         'trimMode': _trimMode.name,
         'clipDurationMs': _clipDuration.inMilliseconds,
+        'bgmPath': _bgmFile?.path,
+        'bgmTitle': _bgmTitle,
       }),
     );
   }
@@ -340,22 +361,49 @@ class HighlightReel extends ChangeNotifier {
     }
     await listFile.writeAsString(buffer.toString());
 
-    final tempOutput = File('${output.path}.tmp.mp4');
-    if (await tempOutput.exists()) {
-      await tempOutput.delete();
+    final concatOutput = File('${highlightsDir.path}/concat_raw.mp4');
+    if (await concatOutput.exists()) {
+      await concatOutput.delete();
     }
 
-    final session = await FFmpegKit.executeWithArguments([
+    final concatSession = await FFmpegKit.executeWithArguments([
       '-y',
       '-f', 'concat',
       '-safe', '0',
       '-i', listFile.path,
       '-c', 'copy',
-      tempOutput.path,
+      concatOutput.path,
     ]);
-    final returnCode = await session.getReturnCode();
-    if (!ReturnCode.isSuccess(returnCode)) {
+    if (!ReturnCode.isSuccess(await concatSession.getReturnCode())) {
       throw Exception('ffmpeg concat failed');
+    }
+
+    final tempOutput = File('${output.path}.tmp.mp4');
+    if (await tempOutput.exists()) {
+      await tempOutput.delete();
+    }
+
+    final bgm = _bgmFile;
+    if (bgm != null && await bgm.exists()) {
+      // Loops the BGM to cover the whole video and replaces each clip's
+      // original audio with it, trimmed to the video's length.
+      final muxSession = await FFmpegKit.executeWithArguments([
+        '-y',
+        '-i', concatOutput.path,
+        '-stream_loop', '-1',
+        '-i', bgm.path,
+        '-map', '0:v:0',
+        '-map', '1:a:0',
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-shortest',
+        tempOutput.path,
+      ]);
+      if (!ReturnCode.isSuccess(await muxSession.getReturnCode())) {
+        throw Exception('ffmpeg bgm mux failed');
+      }
+    } else {
+      await concatOutput.copy(tempOutput.path);
     }
 
     if (await output.exists()) {

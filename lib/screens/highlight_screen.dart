@@ -1,10 +1,17 @@
+import 'dart:io';
+
 import 'package:flutter/material.dart';
+import 'package:gal/gal.dart';
 
 import '../models/clip_trim_mode.dart';
+import '../models/download_quota.dart';
 import '../models/highlight_reel.dart';
+import '../models/sound_library.dart';
 import '../models/subscription_service.dart';
+import '../models/video_library.dart';
 import '../widgets/video_thumbnail.dart';
 import 'paywall_screen.dart';
+import 'sound_library_screen.dart';
 import 'video_player_screen.dart';
 
 class HighlightScreen extends StatefulWidget {
@@ -12,25 +19,37 @@ class HighlightScreen extends StatefulWidget {
     super.key,
     required this.highlightReel,
     required this.subscriptionService,
+    required this.downloadQuota,
+    required this.soundLibrary,
+    required this.videoLibrary,
   });
 
   final HighlightReel highlightReel;
   final SubscriptionService subscriptionService;
+  final DownloadQuota downloadQuota;
+  final SoundLibrary soundLibrary;
+  final VideoLibrary videoLibrary;
 
   @override
   State<HighlightScreen> createState() => _HighlightScreenState();
 }
 
 class _HighlightScreenState extends State<HighlightScreen> {
+  bool _isDownloading = false;
+
   @override
   void initState() {
     super.initState();
     widget.highlightReel.addListener(_onChanged);
+    widget.downloadQuota.addListener(_onChanged);
+    widget.subscriptionService.addListener(_onChanged);
   }
 
   @override
   void dispose() {
     widget.highlightReel.removeListener(_onChanged);
+    widget.downloadQuota.removeListener(_onChanged);
+    widget.subscriptionService.removeListener(_onChanged);
     super.dispose();
   }
 
@@ -40,21 +59,78 @@ class _HighlightScreenState extends State<HighlightScreen> {
 
   void _handleRedo(int index) {
     if (!widget.subscriptionService.isPremium) {
-      Navigator.of(context).push(
-        MaterialPageRoute(
-          builder: (_) => PaywallScreen(
-            subscriptionService: widget.subscriptionService,
-          ),
-        ),
-      );
+      _openPaywall();
       return;
     }
     widget.highlightReel.redo(index);
   }
 
+  void _openPaywall() {
+    Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            PaywallScreen(subscriptionService: widget.subscriptionService),
+      ),
+    );
+  }
+
+  Future<void> _handlePickBgm() async {
+    final result = await Navigator.of(context).push<SoundSelection>(
+      MaterialPageRoute(
+        builder: (_) => SoundLibraryScreen(
+          soundLibrary: widget.soundLibrary,
+          videoLibrary: widget.videoLibrary,
+        ),
+      ),
+    );
+    if (result == null) return;
+    await widget.highlightReel.setBgm(result.sound);
+  }
+
+  Future<void> _handleDownload(File file) async {
+    final subscription = widget.subscriptionService;
+    final quota = widget.downloadQuota;
+    final canDownload =
+        subscription.isPremium || quota.remainingFreeDownloads > 0;
+    if (!canDownload) {
+      _openPaywall();
+      return;
+    }
+
+    setState(() => _isDownloading = true);
+    try {
+      var hasAccess = await Gal.hasAccess();
+      if (!hasAccess) {
+        hasAccess = await Gal.requestAccess();
+      }
+      if (!hasAccess) {
+        _showSnackBar('写真ライブラリへのアクセスが許可されていません');
+        return;
+      }
+      await Gal.putVideo(file.path, album: 'ToshiVlog');
+      if (!subscription.isPremium) {
+        await quota.recordDownload();
+      }
+      _showSnackBar('カメラロールに保存しました');
+    } catch (_) {
+      _showSnackBar('保存に失敗しました');
+    } finally {
+      if (mounted) setState(() => _isDownloading = false);
+    }
+  }
+
+  void _showSnackBar(String message) {
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(SnackBar(content: Text(message)));
+  }
+
   @override
   Widget build(BuildContext context) {
     final reel = widget.highlightReel;
+    final subscription = widget.subscriptionService;
+    final quota = widget.downloadQuota;
     return Scaffold(
       appBar: AppBar(title: const Text('まとめ動画')),
       body: Column(
@@ -69,7 +145,14 @@ class _HighlightScreenState extends State<HighlightScreen> {
           if (reel.isProcessing) const LinearProgressIndicator(minHeight: 3),
           Padding(
             padding: const EdgeInsets.all(16),
-            child: _CompiledPreview(reel: reel),
+            child: _CompiledPreview(
+              reel: reel,
+              isDownloading: _isDownloading,
+              downloadLabel: subscription.isPremium
+                  ? 'ダウンロード (プレミアム: 無制限)'
+                  : 'ダウンロード (本日あと${quota.remainingFreeDownloads}回)',
+              onDownload: _handleDownload,
+            ),
           ),
           const Divider(height: 1),
           Padding(
@@ -110,6 +193,14 @@ class _HighlightScreenState extends State<HighlightScreen> {
                   onSelectionChanged: (selection) =>
                       reel.setClipDuration(selection.first),
                 ),
+                const SizedBox(height: 16),
+                Text('BGM', style: Theme.of(context).textTheme.labelLarge),
+                const SizedBox(height: 8),
+                OutlinedButton.icon(
+                  onPressed: _handlePickBgm,
+                  icon: const Icon(Icons.music_note),
+                  label: Text(reel.bgmTitle ?? 'BGMなし'),
+                ),
               ],
             ),
           ),
@@ -120,7 +211,8 @@ class _HighlightScreenState extends State<HighlightScreen> {
               child: Text(
                 '撮影した動画から選んだ方式・長さで切り取られ、ここに追加されます'
                 '(切り替えは以降撮影分から適用されます)。並び替えや削除で手動編集できます。'
-                'ランダム・盛り上がりのクリップはプレミアム登録で作り直しできます。',
+                'ランダム・盛り上がりのクリップの作り直しと、1日4回目以降のダウンロードは'
+                'プレミアム登録で解除されます。',
                 style: Theme.of(context).textTheme.bodySmall,
               ),
             ),
@@ -165,9 +257,17 @@ class _HighlightScreenState extends State<HighlightScreen> {
 }
 
 class _CompiledPreview extends StatelessWidget {
-  const _CompiledPreview({required this.reel});
+  const _CompiledPreview({
+    required this.reel,
+    required this.isDownloading,
+    required this.downloadLabel,
+    required this.onDownload,
+  });
 
   final HighlightReel reel;
+  final bool isDownloading;
+  final String downloadLabel;
+  final ValueChanged<File> onDownload;
 
   @override
   Widget build(BuildContext context) {
@@ -175,16 +275,33 @@ class _CompiledPreview extends StatelessWidget {
     if (file == null) {
       return const Text('まだまとめ動画がありません');
     }
-    return FilledButton.icon(
-      onPressed: () {
-        Navigator.of(context).push(
-          MaterialPageRoute(
-            builder: (_) => VideoPlayerScreen(file: file, title: 'まとめ動画'),
-          ),
-        );
-      },
-      icon: const Icon(Icons.play_arrow),
-      label: Text('まとめ動画を再生 (${reel.segments.length}クリップ)'),
+    return Column(
+      crossAxisAlignment: CrossAxisAlignment.stretch,
+      children: [
+        FilledButton.icon(
+          onPressed: () {
+            Navigator.of(context).push(
+              MaterialPageRoute(
+                builder: (_) => VideoPlayerScreen(file: file, title: 'まとめ動画'),
+              ),
+            );
+          },
+          icon: const Icon(Icons.play_arrow),
+          label: Text('まとめ動画を再生 (${reel.segments.length}クリップ)'),
+        ),
+        const SizedBox(height: 8),
+        OutlinedButton.icon(
+          onPressed: isDownloading ? null : () => onDownload(file),
+          icon: isDownloading
+              ? const SizedBox(
+                  width: 16,
+                  height: 16,
+                  child: CircularProgressIndicator(strokeWidth: 2),
+                )
+              : const Icon(Icons.download),
+          label: Text(downloadLabel),
+        ),
+      ],
     );
   }
 }

@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 import 'package:intl/date_symbol_data_local.dart';
 
+import 'models/download_quota.dart';
 import 'models/highlight_reel.dart';
+import 'models/sound_library.dart';
 import 'models/subscription_service.dart';
 import 'models/video_library.dart';
 import 'screens/camera_screen.dart';
@@ -41,6 +43,8 @@ class _RootScreenState extends State<RootScreen> {
   final VideoLibrary _videoLibrary = VideoLibrary();
   final HighlightReel _highlightReel = HighlightReel();
   final SubscriptionService _subscriptionService = SubscriptionService();
+  final DownloadQuota _downloadQuota = DownloadQuota();
+  final SoundLibrary _soundLibrary = SoundLibrary();
   int _currentIndex = 0;
 
   @override
@@ -48,6 +52,8 @@ class _RootScreenState extends State<RootScreen> {
     super.initState();
     _highlightReel.load();
     _subscriptionService.init();
+    _downloadQuota.load();
+    _soundLibrary.load();
   }
 
   @override
@@ -55,6 +61,8 @@ class _RootScreenState extends State<RootScreen> {
     _videoLibrary.dispose();
     _highlightReel.dispose();
     _subscriptionService.dispose();
+    _downloadQuota.dispose();
+    _soundLibrary.dispose();
     super.dispose();
   }
 
@@ -65,6 +73,9 @@ class _RootScreenState extends State<RootScreen> {
       HighlightScreen(
         highlightReel: _highlightReel,
         subscriptionService: _subscriptionService,
+        downloadQuota: _downloadQuota,
+        soundLibrary: _soundLibrary,
+        videoLibrary: _videoLibrary,
       ),
       MediaScreen(videoLibrary: _videoLibrary),
     ];
