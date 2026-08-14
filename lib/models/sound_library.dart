@@ -99,6 +99,38 @@ class SoundLibrary extends ChangeNotifier {
     }
   }
 
+  /// Copies a user-picked audio file (e.g. from the device's file picker)
+  /// into the sound library, preserving its original extension.
+  Future<void> addFromFile(File audioFile, {required String title}) async {
+    _isProcessing = true;
+    _errorMessage = null;
+    notifyListeners();
+    try {
+      final dir = await _soundsDirectory();
+      final id = DateTime.now().microsecondsSinceEpoch.toString();
+      final extension = audioFile.path.contains('.')
+          ? audioFile.path.split('.').last
+          : 'mp3';
+      final output = File('${dir.path}/$id.$extension');
+      await audioFile.copy(output.path);
+      _sounds = [
+        ..._sounds,
+        SavedSound(
+          id: id,
+          file: output,
+          title: title,
+          createdAt: DateTime.now(),
+        ),
+      ];
+      await _persist();
+    } catch (_) {
+      _errorMessage = 'ファイルの読み込みに失敗しました';
+    } finally {
+      _isProcessing = false;
+      notifyListeners();
+    }
+  }
+
   Future<void> delete(SavedSound sound) async {
     _sounds = [..._sounds]..removeWhere((s) => s.id == sound.id);
     if (await sound.file.exists()) {

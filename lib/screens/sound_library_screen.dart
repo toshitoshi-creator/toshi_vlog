@@ -1,9 +1,12 @@
 import 'dart:io';
 
+import 'package:audioplayers/audioplayers.dart';
+import 'package:file_picker/file_picker.dart';
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
 import 'package:intl/intl.dart';
 
+import '../models/bundled_track.dart';
 import '../models/saved_sound.dart';
 import '../models/sound_library.dart';
 import '../models/video_item.dart';
@@ -43,20 +46,68 @@ class SoundLibraryScreen extends StatefulWidget {
 }
 
 class _SoundLibraryScreenState extends State<SoundLibraryScreen> {
+  final _previewPlayer = AudioPlayer();
+  String? _previewingTrackId;
+
   @override
   void initState() {
     super.initState();
     widget.soundLibrary.addListener(_onChanged);
+    _previewPlayer.onPlayerComplete.listen((_) {
+      if (mounted) setState(() => _previewingTrackId = null);
+    });
   }
 
   @override
   void dispose() {
     widget.soundLibrary.removeListener(_onChanged);
+    _previewPlayer.dispose();
     super.dispose();
   }
 
   void _onChanged() {
     if (mounted) setState(() {});
+  }
+
+  Future<void> _togglePreview(BundledTrack track) async {
+    if (_previewingTrackId == track.id) {
+      await _previewPlayer.stop();
+      setState(() => _previewingTrackId = null);
+      return;
+    }
+    setState(() => _previewingTrackId = track.id);
+    await _previewPlayer.play(AssetSource(track.previewAssetPath));
+  }
+
+  Future<void> _selectBundledTrack(BundledTrack track) async {
+    await _previewPlayer.stop();
+    final file = await track.materialize();
+    if (!mounted) return;
+    Navigator.of(context).pop<SoundSelection>(
+      SoundSelection.sound(
+        SavedSound(
+          id: 'bundled_${track.id}',
+          file: file,
+          title: track.title,
+          createdAt: DateTime.now(),
+        ),
+      ),
+    );
+  }
+
+  Future<void> _addFromFilePicker() async {
+    final result = await FilePicker.platform.pickFiles(type: FileType.audio);
+    final path = result?.files.single.path;
+    if (path == null) return;
+    final fileName = result!.files.single.name;
+    final defaultTitle = fileName.contains('.')
+        ? fileName.substring(0, fileName.lastIndexOf('.'))
+        : fileName;
+    await _extractWithTitlePrompt(
+      File(path),
+      defaultTitle: defaultTitle,
+      isAlreadyAudio: true,
+    );
   }
 
   Future<void> _addFromGallery() async {
@@ -106,6 +157,7 @@ class _SoundLibraryScreenState extends State<SoundLibraryScreen> {
   Future<void> _extractWithTitlePrompt(
     File file, {
     required String defaultTitle,
+    bool isAlreadyAudio = false,
   }) async {
     final controller = TextEditingController(text: defaultTitle);
     final title = await showDialog<String>(
@@ -120,13 +172,17 @@ class _SoundLibraryScreenState extends State<SoundLibraryScreen> {
           ),
           FilledButton(
             onPressed: () => Navigator.of(context).pop(controller.text.trim()),
-            child: const Text('抽出'),
+            child: Text(isAlreadyAudio ? '追加' : '抽出'),
           ),
         ],
       ),
     );
     if (title == null || title.isEmpty) return;
-    await widget.soundLibrary.extractFromVideo(file, title: title);
+    if (isAlreadyAudio) {
+      await widget.soundLibrary.addFromFile(file, title: title);
+    } else {
+      await widget.soundLibrary.extractFromVideo(file, title: title);
+    }
   }
 
   Future<void> _showAddSourceSheet() async {
@@ -135,6 +191,14 @@ class _SoundLibraryScreenState extends State<SoundLibraryScreen> {
       builder: (context) => SafeArea(
         child: Wrap(
           children: [
+            ListTile(
+              leading: const Icon(Icons.audio_file_outlined),
+              title: const Text('ファイルから選択'),
+              onTap: () {
+                Navigator.of(context).pop();
+                _addFromFilePicker();
+              },
+            ),
             ListTile(
               leading: const Icon(Icons.photo_library_outlined),
               title: const Text('カメラロールの動画から音声を抽出'),
@@ -166,12 +230,12 @@ class _SoundLibraryScreenState extends State<SoundLibraryScreen> {
         actions: [
           IconButton(
             icon: const Icon(Icons.add),
-            tooltip: '動画から音声を抽出',
+            tooltip: '音声を追加',
             onPressed: library.isProcessing ? null : _showAddSourceSheet,
           ),
         ],
       ),
-      body: Column(
+      body: ListView(
         children: [
           if (library.errorMessage != null)
             Container(
@@ -190,27 +254,50 @@ class _SoundLibraryScreenState extends State<SoundLibraryScreen> {
             ).pop<SoundSelection>(const SoundSelection.cleared()),
           ),
           const Divider(height: 1),
-          Expanded(
-            child: library.sounds.isEmpty
-                ? const Center(child: Text('右上の + から動画の音声を取り込めます'))
-                : ListView.builder(
-                    itemCount: library.sounds.length,
-                    itemBuilder: (context, index) {
-                      final sound = library.sounds[index];
-                      return ListTile(
-                        leading: const Icon(Icons.music_note),
-                        title: Text(sound.title),
-                        trailing: IconButton(
-                          icon: const Icon(Icons.delete_outline),
-                          onPressed: () => library.delete(sound),
-                        ),
-                        onTap: () => Navigator.of(
-                          context,
-                        ).pop<SoundSelection>(SoundSelection.sound(sound)),
-                      );
-                    },
-                  ),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text(
+              'フリー音源(商用利用可・著作権フリー)',
+              style: Theme.of(context).textTheme.labelLarge,
+            ),
           ),
+          for (final track in BundledTrack.all)
+            ListTile(
+              leading: IconButton(
+                icon: Icon(
+                  _previewingTrackId == track.id
+                      ? Icons.stop_circle_outlined
+                      : Icons.play_circle_outline,
+                ),
+                onPressed: () => _togglePreview(track),
+              ),
+              title: Text(track.title),
+              onTap: () => _selectBundledTrack(track),
+            ),
+          const Divider(height: 1),
+          Padding(
+            padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
+            child: Text('マイサウンド', style: Theme.of(context).textTheme.labelLarge),
+          ),
+          if (library.sounds.isEmpty)
+            const Padding(
+              padding: EdgeInsets.symmetric(horizontal: 16, vertical: 12),
+              child: Text('右上の + からファイルや動画の音声を取り込めます'),
+            )
+          else
+            for (final sound in library.sounds)
+              ListTile(
+                leading: const Icon(Icons.music_note),
+                title: Text(sound.title),
+                trailing: IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  onPressed: () => library.delete(sound),
+                ),
+                onTap: () => Navigator.of(
+                  context,
+                ).pop<SoundSelection>(SoundSelection.sound(sound)),
+              ),
+          const SizedBox(height: 24),
         ],
       ),
     );
