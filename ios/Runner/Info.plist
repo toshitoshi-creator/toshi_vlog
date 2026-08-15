@@ -32,6 +32,8 @@
 	<string>動画に音声を記録するためにマイクを使用します。</string>
 	<key>NSPhotoLibraryAddUsageDescription</key>
 	<string>作成した動画をカメラロールに保存するために使用します。</string>
+	<key>NSPhotoLibraryUsageDescription</key>
+	<string>カメラロールから動画を選択するために使用します。</string>
 	<key>UIApplicationSceneManifest</key>
 	<dict>
 		<key>UIApplicationSupportsMultipleScenes</key>
