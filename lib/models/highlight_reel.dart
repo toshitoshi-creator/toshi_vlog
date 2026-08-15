@@ -46,6 +46,12 @@ class HighlightReel extends ChangeNotifier {
   String? _bgmTitle;
   List<TextOverlay> _textOverlays = [];
 
+  /// Bumped every time [_recompose] actually rewrites [compiledFile]'s
+  /// contents. The output path never changes between recompositions, so
+  /// callers that cache a player/controller for [compiledFile] should
+  /// compare this instead of the path to notice new content.
+  int _revision = 0;
+
   List<HighlightSegment> get segments => List.unmodifiable(_segments);
   File? get compiledFile => _compiledFile;
   bool get isProcessing => _isProcessing;
@@ -55,6 +61,7 @@ class HighlightReel extends ChangeNotifier {
   File? get bgmFile => _bgmFile;
   String? get bgmTitle => _bgmTitle;
   List<TextOverlay> get textOverlays => List.unmodifiable(_textOverlays);
+  int get revision => _revision;
 
   Future<Directory> _highlightsDirectory() async {
     final documentsDir = await getApplicationDocumentsDirectory();
@@ -447,6 +454,7 @@ class HighlightReel extends ChangeNotifier {
         await output.delete();
       }
       _compiledFile = null;
+      _revision++;
       return;
     }
 
@@ -567,6 +575,7 @@ class HighlightReel extends ChangeNotifier {
     }
     await tempOutput.rename(output.path);
     _compiledFile = output;
+    _revision++;
   }
 
   /// Deep-copies this reel's full state (segments, text overlays, trim

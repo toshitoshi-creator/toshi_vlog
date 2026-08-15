@@ -45,7 +45,7 @@ class _EditScreenState extends State<EditScreen> {
   bool _loadingSelection = false;
 
   VideoPlayerController? _previewController;
-  File? _previewFile;
+  int _previewRevision = -1;
   List<TextOverlay> _draftOverlays = [];
   final Map<String, GlobalKey> _overlayKeys = {};
   double _previewWidth = 1;
@@ -81,7 +81,7 @@ class _EditScreenState extends State<EditScreen> {
   void _onReelChanged() {
     if (!mounted) return;
     _syncFromReel();
-    if (_activeReel.compiledFile?.path != _previewFile?.path) {
+    if (_activeReel.revision != _previewRevision) {
       _loadPreview();
     }
     setState(() {});
@@ -117,7 +117,7 @@ class _EditScreenState extends State<EditScreen> {
     final file = _activeReel.compiledFile;
     final oldController = _previewController;
     _previewController = null;
-    _previewFile = file;
+    _previewRevision = _activeReel.revision;
     await oldController?.dispose();
     if (file == null) {
       if (mounted) setState(() {});
@@ -243,7 +243,13 @@ class _EditScreenState extends State<EditScreen> {
       0.0,
       1.0,
     );
-    _liveY = (_liveY + details.focalPointDelta.dy / _previewWidth * (16 / 9))
+    // previewHeight = previewWidth * (canvasHeight / canvasWidth), so the
+    // normalized delta is dy / previewHeight, i.e. dy / previewWidth scaled
+    // by (canvasWidth / canvasHeight) — not its reciprocal.
+    _liveY = (_liveY +
+            details.focalPointDelta.dy /
+                _previewWidth *
+                (HighlightReel.canvasWidth / HighlightReel.canvasHeight))
         .clamp(0.0, 1.0);
     final newFontSize = (_gestureStartFontSize * details.scale).clamp(
       12.0,
