@@ -399,39 +399,37 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
         else
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: ConstrainedBox(
-              constraints: const BoxConstraints(maxHeight: 220),
-              // Vertical scroll as a safety net for many overlapping
-              // caption rows; horizontal scroll (below) is the primary
-              // interaction and is what most content needs.
-              child: SingleChildScrollView(
-                child: LayoutBuilder(
-                  builder: (context, constraints) {
-                    final contentWidth = _contentWidth(constraints.maxWidth);
-                    return SingleChildScrollView(
-                      controller: _scrollController,
-                      scrollDirection: Axis.horizontal,
-                      child: SizedBox(
-                        width: contentWidth,
-                        height: trackHeight,
-                        child: Stack(
+            // A vertical SingleChildScrollView was tried here as a safety
+            // net for many overlapping caption rows, but nesting it around
+            // the horizontal one confused the gesture arena enough that
+            // dragging the clip/caption handles stopped working reliably.
+            // Overlapping captions are rare enough that it's not worth
+            // reintroducing that risk to guard against it.
+            child: LayoutBuilder(
+              builder: (context, constraints) {
+                final contentWidth = _contentWidth(constraints.maxWidth);
+                return SingleChildScrollView(
+                  controller: _scrollController,
+                  scrollDirection: Axis.horizontal,
+                  child: SizedBox(
+                    width: contentWidth,
+                    height: trackHeight,
+                    child: Stack(
+                      children: [
+                        Column(
                           children: [
-                            Column(
-                              children: [
-                                _buildRuler(contentWidth),
-                                _buildClipTrack(contentWidth),
-                                for (final row in rows)
-                                  _buildCaptionRow(row, contentWidth),
-                              ],
-                            ),
-                            _buildPlayhead(trackHeight),
+                            _buildRuler(contentWidth),
+                            _buildClipTrack(contentWidth),
+                            for (final row in rows)
+                              _buildCaptionRow(row, contentWidth),
                           ],
                         ),
-                      ),
-                    );
-                  },
-                ),
-              ),
+                        _buildPlayhead(trackHeight),
+                      ],
+                    ),
+                  ),
+                );
+              },
             ),
           ),
       ],

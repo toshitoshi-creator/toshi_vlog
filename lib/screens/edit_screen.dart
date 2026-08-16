@@ -571,8 +571,7 @@ class _EditScreenState extends State<EditScreen> {
                       style: const TextStyle(color: Colors.white70),
                     ),
                   ),
-                for (final overlay in _draftOverlays)
-                  _buildOverlayWidget(overlay, _previewWidth, previewHeight),
+                _buildOverlaysLayer(_previewWidth, previewHeight),
                 if (controller != null && controller.value.isInitialized)
                   Positioned(
                     right: 12,
@@ -594,6 +593,38 @@ class _EditScreenState extends State<EditScreen> {
           );
         },
       ),
+    );
+  }
+
+  /// Shows each caption only while the preview's current position is
+  /// within its [TextOverlay.startSeconds]/[TextOverlay.endSeconds] window
+  /// — matching what the timeline's bar represents and what the exported
+  /// video will actually show — except the one currently being dragged,
+  /// which stays visible regardless so the gesture isn't interrupted.
+  Widget _buildOverlaysLayer(double previewWidth, double previewHeight) {
+    final controller = _previewController;
+    if (controller == null) {
+      return Stack(
+        children: [
+          for (final overlay in _draftOverlays)
+            _buildOverlayWidget(overlay, previewWidth, previewHeight),
+        ],
+      );
+    }
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final seconds = value.position.inMilliseconds / 1000;
+        return Stack(
+          children: [
+            for (final overlay in _draftOverlays)
+              if (overlay.id == _activeOverlayId ||
+                  (seconds >= overlay.startSeconds &&
+                      seconds <= overlay.endSeconds))
+                _buildOverlayWidget(overlay, previewWidth, previewHeight),
+          ],
+        );
+      },
     );
   }
 
