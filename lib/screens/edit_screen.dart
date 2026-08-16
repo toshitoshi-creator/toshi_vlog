@@ -13,6 +13,7 @@ import '../models/text_overlay.dart';
 import '../models/video_library.dart';
 import '../utils/download_video.dart';
 import '../utils/text_overlay_renderer.dart';
+import '../widgets/date_template_sheet.dart';
 import '../widgets/text_overlay_form_sheet.dart';
 import '../widgets/video_editor_timeline.dart';
 import 'sound_library_screen.dart';
@@ -178,6 +179,91 @@ class _EditScreenState extends State<EditScreen> {
   Future<void> _handleFormResult(TextOverlay overlay) async {
     final rendered = await renderTextOverlay(overlay, _activeReel);
     await _activeReel.upsertTextOverlay(rendered);
+  }
+
+  /// Entry point for the timeline's "+" button — lets the user choose
+  /// between typing a free-text comment or building one from the active
+  /// clip's recorded date/time (テンプレート).
+  Future<void> _handleAddTextPressed() async {
+    if (_activeReel.segments.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('先にクリップを追加してください')));
+      return;
+    }
+    final choice = await showModalBottomSheet<_AddTextChoice>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            ListTile(
+              leading: const Icon(Icons.text_fields),
+              title: const Text('コメント'),
+              subtitle: const Text('自由に文字を入力します'),
+              onTap: () => Navigator.of(context).pop(_AddTextChoice.comment),
+            ),
+            ListTile(
+              leading: const Icon(Icons.event_note),
+              title: const Text('テンプレート'),
+              subtitle: const Text('撮影した日時を表示します'),
+              onTap: () => Navigator.of(context).pop(_AddTextChoice.template),
+            ),
+          ],
+        ),
+      ),
+    );
+    if (choice == _AddTextChoice.comment) {
+      await _addText();
+    } else if (choice == _AddTextChoice.template) {
+      await _addTemplateText();
+    }
+  }
+
+  /// The clip whose time range currently covers the preview's playhead —
+  /// used to pick which clip's recorded date the テンプレート text uses,
+  /// and to scope the new caption to just that clip by default.
+  int _activeClipIndexAt(Duration position, List<Duration> starts) {
+    final seconds = position.inMilliseconds / 1000;
+    for (var i = 0; i < _activeReel.segments.length; i++) {
+      final start = starts[i].inMilliseconds / 1000;
+      final end = starts[i + 1].inMilliseconds / 1000;
+      if (seconds >= start && seconds < end) return i;
+    }
+    return _activeReel.segments.length - 1;
+  }
+
+  Future<void> _addTemplateText() async {
+    final segments = _activeReel.segments;
+    if (segments.isEmpty) return;
+    final starts = _activeReel.segmentStartTimes();
+    final position = _previewController?.value.position ?? Duration.zero;
+    final index = _activeClipIndexAt(position, starts);
+    final segment = segments[index];
+    final clipStart = starts[index].inMilliseconds / 1000;
+    final clipEnd = starts[index + 1].inMilliseconds / 1000;
+
+    final text = await showModalBottomSheet<String>(
+      context: context,
+      isScrollControlled: true,
+      builder: (context) => DateTemplateSheet(dateTime: segment.createdAt),
+    );
+    if (text == null || text.trim().isEmpty) return;
+
+    final overlay = TextOverlay(
+      id: DateTime.now().microsecondsSinceEpoch.toString(),
+      text: text,
+      fontId: AppFont.all.first.id,
+      fontSize: 64,
+      color: Colors.white,
+      x: 0.5,
+      y: 0.5,
+      rotationDegrees: 0,
+      startSeconds: clipStart,
+      endSeconds: clipEnd,
+    );
+    await _handleFormResult(overlay);
+    setState(() => _selectedCaptionId = overlay.id);
   }
 
   Future<void> _addText() async {
@@ -500,7 +586,7 @@ class _EditScreenState extends State<EditScreen> {
                   onSelectCaption: _handleSelectCaption,
                   onTapCaption: _editText,
                   onCommitCaptionTiming: _handleCommitCaptionTiming,
-                  onAddText: _addText,
+                  onAddText: _handleAddTextPressed,
                 ),
                 const SizedBox(height: 8),
               ],
@@ -681,3 +767,5 @@ class _EditScreenState extends State<EditScreen> {
 extension _FirstOrNull<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }
+
+enum _AddTextChoice { comment, template }

@@ -48,6 +48,11 @@ class _RootScreenState extends State<RootScreen> {
   final SoundLibrary _soundLibrary = SoundLibrary();
   int _currentIndex = 0;
 
+  /// In landscape the bottom NavigationBar eats into the already-short
+  /// vertical space, so it starts collapsed there and can be expanded via
+  /// the floating toggle button. Always shown (uncollapsible) in portrait.
+  bool _showNavInLandscape = false;
+
   @override
   void initState() {
     super.initState();
@@ -89,21 +94,53 @@ class _RootScreenState extends State<RootScreen> {
       MediaScreen(videoLibrary: _videoLibrary),
     ];
 
+    final isLandscape =
+        MediaQuery.orientationOf(context) == Orientation.landscape;
+    final showNavBar = !isLandscape || _showNavInLandscape;
+
     return Scaffold(
-      body: IndexedStack(index: _currentIndex, children: screens),
-      bottomNavigationBar: NavigationBar(
-        selectedIndex: _currentIndex,
-        onDestinationSelected: (index) => setState(() => _currentIndex = index),
-        destinations: const [
-          NavigationDestination(icon: Icon(Icons.camera_alt), label: 'カメラ'),
-          NavigationDestination(
-            icon: Icon(Icons.movie_creation_outlined),
-            label: 'まとめ',
-          ),
-          NavigationDestination(icon: Icon(Icons.edit), label: '編集'),
-          NavigationDestination(icon: Icon(Icons.photo_library), label: 'メディア'),
+      body: Stack(
+        children: [
+          IndexedStack(index: _currentIndex, children: screens),
+          if (isLandscape)
+            Positioned(
+              right: 8,
+              bottom: 8,
+              child: SafeArea(
+                child: FloatingActionButton.small(
+                  heroTag: 'nav-toggle',
+                  tooltip: showNavBar ? 'タブを隠す' : 'タブを表示',
+                  onPressed: () =>
+                      setState(() => _showNavInLandscape = !_showNavInLandscape),
+                  child: Icon(showNavBar ? Icons.expand_more : Icons.apps),
+                ),
+              ),
+            ),
         ],
       ),
+      bottomNavigationBar: showNavBar
+          ? NavigationBar(
+              selectedIndex: _currentIndex,
+              onDestinationSelected: (index) {
+                setState(() {
+                  _currentIndex = index;
+                  if (isLandscape) _showNavInLandscape = false;
+                });
+              },
+              destinations: const [
+                NavigationDestination(icon: Icon(Icons.camera_alt), label: 'カメラ'),
+                NavigationDestination(
+                  icon: Icon(Icons.movie_creation_outlined),
+                  label: 'まとめ',
+                ),
+                NavigationDestination(icon: Icon(Icons.edit), label: '編集'),
+                NavigationDestination(
+                  icon: Icon(Icons.photo_library),
+                  label: 'メディア',
+                ),
+              ],
+            )
+          : null,
     );
   }
 }

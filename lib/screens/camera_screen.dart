@@ -379,11 +379,20 @@ class _CameraScreenState extends State<CameraScreen>
           children: [
             if (controller != null && controller.value.isInitialized)
               Positioned.fill(
-                child: GestureDetector(
-                  onScaleStart: (_) => _baseZoom = _currentZoom,
-                  onScaleUpdate: (details) =>
-                      _setZoom(_baseZoom * details.scale),
-                  child: CameraPreview(controller),
+                // CameraPreview sizes itself via an internal AspectRatio to
+                // match the sensor's aspect ratio, but AspectRatio can only
+                // honor that under loose constraints — Positioned.fill alone
+                // hands it tight (exact-fill) constraints, which stretches
+                // the image to the full screen box, most noticeably in
+                // landscape. Center gives it the loose constraints it needs
+                // so it letterboxes instead of distorting.
+                child: Center(
+                  child: GestureDetector(
+                    onScaleStart: (_) => _baseZoom = _currentZoom,
+                    onScaleUpdate: (details) =>
+                        _setZoom(_baseZoom * details.scale),
+                    child: CameraPreview(controller),
+                  ),
                 ),
               )
             else
