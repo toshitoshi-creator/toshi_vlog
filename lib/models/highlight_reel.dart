@@ -9,6 +9,7 @@ import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
 import 'clip_trim_mode.dart';
+import 'export_settings.dart';
 import 'highlight_segment.dart';
 import 'saved_sound.dart';
 import 'text_overlay.dart';
@@ -44,7 +45,17 @@ class HighlightReel extends ChangeNotifier {
   final _random = Random();
   File? _bgmFile;
   String? _bgmTitle;
+  double _bgmVolume = 1;
+  double _videoVolume = 1;
   List<TextOverlay> _textOverlays = [];
+  ExportResolution _exportResolution = ExportResolution.hd;
+  int _exportFps = 30;
+
+  /// Whether the export prepends an "opening" built from the middle 1
+  /// second of each clip's source recording. Only meaningful/settable once
+  /// there are at least [minClipsForOpening] segments.
+  bool _includeOpening = false;
+  static const minClipsForOpening = 4;
 
   /// Bumped every time [_recompose] actually rewrites [compiledFile]'s
   /// contents. The output path never changes between recompositions, so
@@ -60,8 +71,14 @@ class HighlightReel extends ChangeNotifier {
   Duration get clipDuration => _clipDuration;
   File? get bgmFile => _bgmFile;
   String? get bgmTitle => _bgmTitle;
+  double get bgmVolume => _bgmVolume;
+  double get videoVolume => _videoVolume;
   List<TextOverlay> get textOverlays => List.unmodifiable(_textOverlays);
   int get revision => _revision;
+  ExportResolution get exportResolution => _exportResolution;
+  int get exportFps => _exportFps;
+  bool get includeOpening => _includeOpening;
+  bool get canIncludeOpening => _segments.length >= minClipsForOpening;
 
   Future<Directory> _highlightsDirectory() async {
     final documentsDir = await getApplicationDocumentsDirectory();
@@ -166,6 +183,13 @@ class HighlightReel extends ChangeNotifier {
           _bgmFile = File(bgmPath);
           _bgmTitle = raw['bgmTitle'] as String?;
         }
+        _bgmVolume = (raw['bgmVolume'] as num?)?.toDouble() ?? 1;
+        _videoVolume = (raw['videoVolume'] as num?)?.toDouble() ?? 1;
+        _exportResolution = ExportResolution.fromName(
+          raw['exportResolution'] as String?,
+        );
+        _exportFps = raw['exportFps'] as int? ?? 30;
+        _includeOpening = raw['includeOpening'] as bool? ?? false;
       } catch (_) {
         // Keep the defaults.
       }
@@ -208,13 +232,47 @@ class HighlightReel extends ChangeNotifier {
   }
 
   /// Sets or clears the background music track mixed into the compiled
-  /// video, replacing each clip's original audio. Pass `null` to remove it.
+  /// video alongside each clip's original audio (see [setVolumes] for
+  /// their relative levels). Pass `null` to remove it.
   Future<void> setBgm(SavedSound? sound) => _guarded(() async {
     _bgmFile = sound?.file;
     _bgmTitle = sound?.title;
     await _persistSettings();
     await _recompose();
   }, 'BGMの設定に失敗しました');
+
+  /// Sets the mix volume (0 = silent, 1 = original level, can go higher)
+  /// for the BGM track and/or the clips' own recorded audio. Pass `null`
+  /// to leave either side unchanged.
+  Future<void> setVolumes({double? bgmVolume, double? videoVolume}) =>
+      _guarded(() async {
+        if (bgmVolume != null) _bgmVolume = bgmVolume;
+        if (videoVolume != null) _videoVolume = videoVolume;
+        await _persistSettings();
+        await _recompose();
+      }, '音量の設定に失敗しました');
+
+  /// Sets the compiled video's export resolution/frame rate. Pass `null`
+  /// to leave either unchanged.
+  Future<void> setExportSettings({
+    ExportResolution? resolution,
+    int? fps,
+  }) => _guarded(() async {
+    if (resolution != null) _exportResolution = resolution;
+    if (fps != null) _exportFps = fps;
+    await _persistSettings();
+    await _recompose();
+  }, '書き出し設定の変更に失敗しました');
+
+  /// Toggles prepending an opening (built from the middle 1 second of each
+  /// clip's source) before the main video on export. No-ops if there
+  /// aren't enough clips yet (see [canIncludeOpening]).
+  Future<void> setIncludeOpening(bool value) => _guarded(() async {
+    if (value && !canIncludeOpening) return;
+    _includeOpening = value;
+    await _persistSettings();
+    await _recompose();
+  }, 'オープニング設定の変更に失敗しました');
 
   /// Adds a new caption or updates an existing one (matched by id).
   /// [overlay] must already have [TextOverlay.renderedImagePath] set to a
@@ -254,6 +312,11 @@ class HighlightReel extends ChangeNotifier {
         'clipDurationMs': _clipDuration.inMilliseconds,
         'bgmPath': _bgmFile?.path,
         'bgmTitle': _bgmTitle,
+        'bgmVolume': _bgmVolume,
+        'videoVolume': _videoVolume,
+        'exportResolution': _exportResolution.name,
+        'exportFps': _exportFps,
+        'includeOpening': _includeOpening,
       }),
     );
   }
@@ -317,6 +380,8 @@ class HighlightReel extends ChangeNotifier {
       segment.file,
       startOffset,
       _clipDuration,
+      rotationDegrees: segment.frameRotationDegrees,
+      scale: segment.frameScale,
     );
 
     _segments = [
@@ -370,6 +435,8 @@ class HighlightReel extends ChangeNotifier {
       segment.file,
       offset,
       duration,
+      rotationDegrees: segment.frameRotationDegrees,
+      scale: segment.frameScale,
     );
 
     _segments = [
@@ -382,6 +449,43 @@ class HighlightReel extends ChangeNotifier {
     await _persistManifest();
     await _recompose();
   }, 'クリップのトリミングに失敗しました');
+
+  /// Re-trims a segment's window with new 画角 (framing) values — rotation
+  /// in degrees and a center-zoom scale — keeping its current trim window
+  /// (start offset/duration) unchanged. Used by the clip framing editor.
+  Future<void> setSegmentFraming(
+    int index, {
+    required double rotationDegrees,
+    required double scale,
+  }) => _guarded(() async {
+    final segment = _segments[index];
+    final source = File(segment.sourcePath);
+    if (!await source.exists()) {
+      throw Exception('元の動画が見つかりません');
+    }
+    final actualDuration = await _trimClip(
+      source,
+      segment.file,
+      segment.startOffset,
+      segment.duration,
+      rotationDegrees: rotationDegrees,
+      scale: scale,
+    );
+
+    _segments = [
+      for (final s in _segments)
+        if (s.id == segment.id)
+          s.copyWith(
+            duration: actualDuration,
+            frameRotationDegrees: rotationDegrees,
+            frameScale: scale,
+          )
+        else
+          s,
+    ];
+    await _persistManifest();
+    await _recompose();
+  }, '画角の変更に失敗しました');
 
   /// [newIndex] is the target index after [oldIndex] has been removed
   /// (i.e. as reported by [ReorderableListView]'s `onReorderItem`).
@@ -512,20 +616,37 @@ class HighlightReel extends ChangeNotifier {
   /// Trims [source] starting at [startOffset] for [duration] into [output],
   /// returning the trimmed file's actual duration (which can be shorter than
   /// requested if [startOffset]+[duration] runs past the end of [source]).
+  /// [rotationDegrees] and [scale] apply the clip's 画角 (framing) edits —
+  /// a straighten/rotate and a center zoom — before fitting into the canvas.
   Future<Duration> _trimClip(
     File source,
     File output,
     Duration startOffset,
-    Duration duration,
-  ) async {
+    Duration duration, {
+    double rotationDegrees = 0,
+    double scale = 1,
+  }) async {
+    final filters = <String>[];
+    if (rotationDegrees != 0) {
+      final radians = rotationDegrees * pi / 180;
+      filters.add(
+        'rotate=${radians.toStringAsFixed(6)}:fillcolor=black:ow=iw:oh=ih',
+      );
+    }
+    if (scale != 1) {
+      filters.add('scale=iw*$scale:ih*$scale,crop=iw/$scale:ih/$scale');
+    }
+    filters.add(
+      'scale=w=$canvasWidth:h=$canvasHeight:force_original_aspect_ratio=decrease',
+    );
+    filters.add('pad=$canvasWidth:$canvasHeight:(ow-iw)/2:(oh-ih)/2,setsar=1');
+
     final session = await FFmpegKit.executeWithArguments([
       '-y',
       '-ss', (startOffset.inMilliseconds / 1000).toStringAsFixed(2),
       '-i', source.path,
       '-t', (duration.inMilliseconds / 1000).toStringAsFixed(2),
-      '-vf',
-      'scale=w=$canvasWidth:h=$canvasHeight:force_original_aspect_ratio=decrease,'
-          'pad=$canvasWidth:$canvasHeight:(ow-iw)/2:(oh-ih)/2,setsar=1',
+      '-vf', filters.join(','),
       '-r', '30',
       '-c:v', 'libx264',
       '-preset', 'veryfast',
@@ -545,6 +666,19 @@ class HighlightReel extends ChangeNotifier {
   /// clamp how far the editor timeline can extend a clip's trim window.
   Future<Duration> sourceDurationFor(HighlightSegment segment) =>
       _probeDuration(File(segment.sourcePath));
+
+  /// Trims segment [index]'s current window from its source with no framing
+  /// applied, as a clean baseline for the framing editor's live preview —
+  /// so a Flutter-side Transform can show the chosen rotation/scale
+  /// accurately regardless of whatever framing was previously baked in.
+  Future<File> extractUnframedPreview(int index) async {
+    final segment = _segments[index];
+    final source = File(segment.sourcePath);
+    final highlightsDir = await _highlightsDirectory();
+    final output = File('${highlightsDir.path}/framing_preview.mp4');
+    await _trimClip(source, output, segment.startOffset, segment.duration);
+    return output;
+  }
 
   Future<void> _recompose() async {
     final output = await _compiledOutputFile();
@@ -588,8 +722,8 @@ class HighlightReel extends ChangeNotifier {
 
     final bgm = _bgmFile;
     if (bgm != null && await bgm.exists()) {
-      // Loops the BGM to cover the whole video and replaces each clip's
-      // original audio with it, trimmed to the video's length.
+      // Loops the BGM to cover the whole video and mixes it with the
+      // clips' own audio, each independently volume-scaled.
       final bgmOutput = File('${highlightsDir.path}/with_bgm.mp4');
       if (await bgmOutput.exists()) {
         await bgmOutput.delete();
@@ -599,10 +733,15 @@ class HighlightReel extends ChangeNotifier {
         '-i', current.path,
         '-stream_loop', '-1',
         '-i', bgm.path,
+        '-filter_complex',
+        '[0:a]volume=$_videoVolume[a0];[1:a]volume=$_bgmVolume[a1];'
+            '[a0][a1]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]',
         '-map', '0:v:0',
-        '-map', '1:a:0',
+        '-map', '[aout]',
         '-c:v', 'copy',
         '-c:a', 'aac',
+        '-ar', '44100',
+        '-ac', '2',
         '-shortest',
         bgmOutput.path,
       ]);
@@ -610,6 +749,25 @@ class HighlightReel extends ChangeNotifier {
         throw Exception('ffmpeg bgm mux failed');
       }
       current = bgmOutput;
+    } else if (_videoVolume != 1) {
+      final volumeOutput = File('${highlightsDir.path}/with_volume.mp4');
+      if (await volumeOutput.exists()) {
+        await volumeOutput.delete();
+      }
+      final volumeSession = await FFmpegKit.executeWithArguments([
+        '-y',
+        '-i', current.path,
+        '-af', 'volume=$_videoVolume',
+        '-c:v', 'copy',
+        '-c:a', 'aac',
+        '-ar', '44100',
+        '-ac', '2',
+        volumeOutput.path,
+      ]);
+      if (!ReturnCode.isSuccess(await volumeSession.getReturnCode())) {
+        throw Exception('ffmpeg volume adjust failed');
+      }
+      current = volumeOutput;
     }
 
     final renderedOverlays = _textOverlays
@@ -671,6 +829,55 @@ class HighlightReel extends ChangeNotifier {
       }
     }
 
+    final opening = await _buildOpeningIfNeeded(highlightsDir);
+    if (opening != null) {
+      final withOpening = File('${highlightsDir.path}/with_opening.mp4');
+      if (await withOpening.exists()) {
+        await withOpening.delete();
+      }
+      final prependSession = await FFmpegKit.executeWithArguments([
+        '-y',
+        '-i', opening.path,
+        '-i', current.path,
+        '-filter_complex',
+        '[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[outv][outa]',
+        '-map', '[outv]',
+        '-map', '[outa]',
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-c:a', 'aac',
+        '-ar', '44100',
+        '-ac', '2',
+        withOpening.path,
+      ]);
+      if (!ReturnCode.isSuccess(await prependSession.getReturnCode())) {
+        throw Exception('ffmpeg opening prepend failed');
+      }
+      current = withOpening;
+    }
+
+    if (_exportResolution == ExportResolution.uhd || _exportFps != 30) {
+      final exportOutput = File('${highlightsDir.path}/export_final.mp4');
+      if (await exportOutput.exists()) {
+        await exportOutput.delete();
+      }
+      final exportSession = await FFmpegKit.executeWithArguments([
+        '-y',
+        '-i', current.path,
+        '-vf',
+        'scale=${_exportResolution.width}:${_exportResolution.height}',
+        '-r', '$_exportFps',
+        '-c:v', 'libx264',
+        '-preset', 'veryfast',
+        '-c:a', 'copy',
+        exportOutput.path,
+      ]);
+      if (!ReturnCode.isSuccess(await exportSession.getReturnCode())) {
+        throw Exception('ffmpeg export resolution/fps pass failed');
+      }
+      current = exportOutput;
+    }
+
     final tempOutput = File('${output.path}.tmp.mp4');
     if (await tempOutput.exists()) {
       await tempOutput.delete();
@@ -683,6 +890,74 @@ class HighlightReel extends ChangeNotifier {
     await tempOutput.rename(output.path);
     _compiledFile = output;
     _revision++;
+  }
+
+  /// Builds an "opening" clip from the middle 1 second of each segment's
+  /// *source* recording (not the already-trimmed highlight window), to be
+  /// prepended before the main compiled video. Returns null if the opening
+  /// is disabled, there aren't enough clips yet, or nothing could be built.
+  Future<File?> _buildOpeningIfNeeded(Directory highlightsDir) async {
+    if (!_includeOpening || _segments.length < minClipsForOpening) {
+      return null;
+    }
+    const pieceDuration = Duration(seconds: 1);
+    final pieceFiles = <File>[];
+    for (var i = 0; i < _segments.length; i++) {
+      final segment = _segments[i];
+      final source = File(segment.sourcePath);
+      if (!await source.exists()) continue;
+      final sourceDuration = await _probeDuration(source);
+      if (sourceDuration <= Duration.zero) continue;
+
+      var mid = Duration(
+        milliseconds:
+            (sourceDuration.inMilliseconds - pieceDuration.inMilliseconds) ~/
+                2,
+      );
+      if (mid < Duration.zero) mid = Duration.zero;
+      var actualPieceDuration = pieceDuration;
+      if (mid + actualPieceDuration > sourceDuration) {
+        actualPieceDuration = sourceDuration - mid;
+      }
+      if (actualPieceDuration <= Duration.zero) continue;
+
+      final pieceFile = File('${highlightsDir.path}/opening_piece_$i.mp4');
+      await _trimClip(
+        source,
+        pieceFile,
+        mid,
+        actualPieceDuration,
+        rotationDegrees: segment.frameRotationDegrees,
+        scale: segment.frameScale,
+      );
+      pieceFiles.add(pieceFile);
+    }
+    if (pieceFiles.isEmpty) return null;
+
+    final openingListFile = File('${highlightsDir.path}/opening_list.txt');
+    final buffer = StringBuffer();
+    for (final f in pieceFiles) {
+      final escapedPath = f.path.replaceAll("'", r"'\''");
+      buffer.writeln("file '$escapedPath'");
+    }
+    await openingListFile.writeAsString(buffer.toString());
+
+    final openingOutput = File('${highlightsDir.path}/opening.mp4');
+    if (await openingOutput.exists()) {
+      await openingOutput.delete();
+    }
+    final session = await FFmpegKit.executeWithArguments([
+      '-y',
+      '-f', 'concat',
+      '-safe', '0',
+      '-i', openingListFile.path,
+      '-c', 'copy',
+      openingOutput.path,
+    ]);
+    if (!ReturnCode.isSuccess(await session.getReturnCode())) {
+      throw Exception('ffmpeg opening concat failed');
+    }
+    return openingOutput;
   }
 
   /// Deep-copies this reel's full state (segments, text overlays, trim
@@ -708,6 +983,8 @@ class HighlightReel extends ChangeNotifier {
           startOffset: segment.startOffset,
           duration: segment.duration,
           redoCount: segment.redoCount,
+          frameRotationDegrees: segment.frameRotationDegrees,
+          frameScale: segment.frameScale,
         ),
       );
     }
@@ -745,6 +1022,11 @@ class HighlightReel extends ChangeNotifier {
     target._clipDuration = _clipDuration;
     target._bgmFile = _bgmFile;
     target._bgmTitle = _bgmTitle;
+    target._bgmVolume = _bgmVolume;
+    target._videoVolume = _videoVolume;
+    target._exportResolution = _exportResolution;
+    target._exportFps = _exportFps;
+    target._includeOpening = _includeOpening;
 
     await target._persistManifest();
     await target._persistSettings();

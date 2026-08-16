@@ -14,8 +14,10 @@ import '../models/video_library.dart';
 import '../utils/download_video.dart';
 import '../utils/text_overlay_renderer.dart';
 import '../widgets/date_template_sheet.dart';
+import '../widgets/export_settings_sheet.dart';
 import '../widgets/text_overlay_form_sheet.dart';
 import '../widgets/video_editor_timeline.dart';
+import 'clip_framing_screen.dart';
 import 'sound_library_screen.dart';
 
 /// The Adobe Premiere-style advanced editor: video preview + multi-track
@@ -332,6 +334,18 @@ class _EditScreenState extends State<EditScreen> {
     setState(() => _selectedCaptionId = id);
   }
 
+  Future<void> _handleEditFraming(int index) async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) => ClipFramingScreen(
+          reel: _activeReel,
+          index: index,
+          segment: _activeReel.segments[index],
+        ),
+      ),
+    );
+  }
+
   void _beginGesture(TextOverlay overlay) {
     _activeOverlayId = overlay.id;
     _gestureStartFontSize = overlay.fontSize;
@@ -497,6 +511,17 @@ class _EditScreenState extends State<EditScreen> {
     await widget.compilationLibrary.deleteSaved(id);
   }
 
+  Future<void> _handleOpenSettings() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ExportSettingsSheet(
+        reel: _activeReel,
+        subscriptionService: widget.subscriptionService,
+      ),
+    );
+  }
+
   Future<void> _handleCommitClipTrim(
     int index, {
     Duration? newStartOffset,
@@ -531,6 +556,11 @@ class _EditScreenState extends State<EditScreen> {
             icon: const Icon(Icons.music_note),
             tooltip: reel.bgmTitle ?? 'BGMなし',
             onPressed: _handlePickBgm,
+          ),
+          IconButton(
+            icon: const Icon(Icons.tune),
+            tooltip: '詳細設定',
+            onPressed: _handleOpenSettings,
           ),
           IconButton(
             icon: _isDownloading
@@ -587,6 +617,7 @@ class _EditScreenState extends State<EditScreen> {
                   onTapCaption: _editText,
                   onCommitCaptionTiming: _handleCommitCaptionTiming,
                   onAddText: _handleAddTextPressed,
+                  onEditFraming: _handleEditFraming,
                 ),
                 const SizedBox(height: 8),
               ],

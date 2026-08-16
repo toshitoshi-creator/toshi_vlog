@@ -50,8 +50,23 @@ class _TextOverlayFormSheetState extends State<TextOverlayFormSheet> {
   late String _fontId;
   late double _fontSize;
   late Color _color;
+  late double _x;
+  late double _y;
+  late double _rotationDegrees;
   late double _startSeconds;
   late double _endSeconds;
+
+  static const _fontSizePresets = [
+    (label: '小', value: 36.0),
+    (label: '中', value: 64.0),
+    (label: '大', value: 120.0),
+  ];
+
+  static const _positionPresets = [
+    (label: '中央', x: 0.5, y: 0.5),
+    (label: '中央上', x: 0.5, y: 0.15),
+    (label: '中央下', x: 0.5, y: 0.85),
+  ];
 
   static const _presetColors = [
     Colors.white,
@@ -75,6 +90,9 @@ class _TextOverlayFormSheetState extends State<TextOverlayFormSheet> {
     _fontId = widget.initial.fontId;
     _fontSize = widget.initial.fontSize;
     _color = widget.initial.color;
+    _x = widget.initial.x;
+    _y = widget.initial.y;
+    _rotationDegrees = widget.initial.rotationDegrees;
     final maxSeconds = widget.totalSeconds > 0 ? widget.totalSeconds : 0.0;
     _startSeconds = widget.initial.startSeconds.clamp(0.0, maxSeconds);
     _endSeconds = widget.initial.endSeconds.clamp(0.0, maxSeconds);
@@ -128,6 +146,9 @@ class _TextOverlayFormSheetState extends State<TextOverlayFormSheet> {
         fontId: _fontId,
         fontSize: _fontSize,
         color: _color,
+        x: _x,
+        y: _y,
+        rotationDegrees: _rotationDegrees,
         startSeconds: start,
         endSeconds: end,
       ),
@@ -192,58 +213,110 @@ class _TextOverlayFormSheetState extends State<TextOverlayFormSheet> {
             const SizedBox(height: 16),
             Text('フォント', style: Theme.of(context).textTheme.labelLarge),
             const SizedBox(height: 8),
-            SizedBox(
-              height: 72,
-              child: ListView.separated(
-                scrollDirection: Axis.horizontal,
-                itemCount: AppFont.all.length,
-                separatorBuilder: (_, _) => const SizedBox(width: 8),
-                itemBuilder: (context, index) {
-                  final font = AppFont.all[index];
-                  final selected = font.id == _fontId;
-                  return GestureDetector(
-                    onTap: () => setState(() => _fontId = font.id),
-                    child: Container(
-                      width: 72,
-                      padding: const EdgeInsets.symmetric(vertical: 4),
-                      decoration: BoxDecoration(
-                        color: selected
-                            ? Theme.of(context).colorScheme.primaryContainer
-                            : Theme.of(
-                                context,
-                              ).colorScheme.surfaceContainerHighest,
-                        borderRadius: BorderRadius.circular(8),
-                      ),
-                      child: Column(
-                        mainAxisAlignment: MainAxisAlignment.center,
-                        children: [
-                          Text(
-                            'あ',
+            ListView.separated(
+              shrinkWrap: true,
+              physics: const NeverScrollableScrollPhysics(),
+              itemCount: AppFont.all.length,
+              separatorBuilder: (_, _) => const SizedBox(height: 6),
+              itemBuilder: (context, index) {
+                final font = AppFont.all[index];
+                final selected = font.id == _fontId;
+                return GestureDetector(
+                  onTap: () => setState(() => _fontId = font.id),
+                  child: Container(
+                    width: double.infinity,
+                    padding: const EdgeInsets.symmetric(
+                      horizontal: 12,
+                      vertical: 10,
+                    ),
+                    decoration: BoxDecoration(
+                      color: selected
+                          ? Theme.of(context).colorScheme.primaryContainer
+                          : Theme.of(
+                              context,
+                            ).colorScheme.surfaceContainerHighest,
+                      borderRadius: BorderRadius.circular(8),
+                      border: selected
+                          ? Border.all(
+                              color: Theme.of(context).colorScheme.primary,
+                              width: 2,
+                            )
+                          : null,
+                    ),
+                    child: Row(
+                      children: [
+                        Expanded(
+                          child: Text(
+                            'Pm 12:34 コメント',
                             style: TextStyle(
                               fontFamily: font.familyName,
-                              fontSize: 24,
+                              fontSize: 20,
                             ),
-                          ),
-                          Text(
-                            font.displayName,
-                            style: const TextStyle(fontSize: 9),
                             maxLines: 1,
                             overflow: TextOverflow.ellipsis,
                           ),
-                        ],
-                      ),
+                        ),
+                        if (selected)
+                          Icon(
+                            Icons.check,
+                            color: Theme.of(context).colorScheme.primary,
+                          ),
+                      ],
                     ),
-                  );
-                },
-              ),
+                  ),
+                );
+              },
             ),
             const SizedBox(height: 16),
             Text('サイズ', style: Theme.of(context).textTheme.labelLarge),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final preset in _fontSizePresets)
+                  ChoiceChip(
+                    label: Text(preset.label),
+                    selected: _fontSize == preset.value,
+                    onSelected: (_) =>
+                        setState(() => _fontSize = preset.value),
+                  ),
+              ],
+            ),
             Slider(
               value: _fontSize,
               min: 16,
               max: 200,
               onChanged: (v) => setState(() => _fontSize = v),
+            ),
+            const SizedBox(height: 8),
+            Text('配置', style: Theme.of(context).textTheme.labelLarge),
+            const SizedBox(height: 8),
+            Wrap(
+              spacing: 8,
+              children: [
+                for (final preset in _positionPresets)
+                  OutlinedButton(
+                    onPressed: () => setState(() {
+                      _x = preset.x;
+                      _y = preset.y;
+                    }),
+                    child: Text(preset.label),
+                  ),
+              ],
+            ),
+            const SizedBox(height: 8),
+            Row(
+              children: [
+                Text('回転', style: Theme.of(context).textTheme.labelLarge),
+                const Spacer(),
+                Text('${_rotationDegrees.round()}°'),
+                IconButton(
+                  icon: const Icon(Icons.rotate_right),
+                  tooltip: '90度回転',
+                  onPressed: () => setState(
+                    () => _rotationDegrees = (_rotationDegrees + 90) % 360,
+                  ),
+                ),
+              ],
             ),
             const SizedBox(height: 8),
             Text('色', style: Theme.of(context).textTheme.labelLarge),

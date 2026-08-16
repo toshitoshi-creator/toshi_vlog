@@ -29,6 +29,7 @@ class VideoEditorTimeline extends StatefulWidget {
     required this.onTapCaption,
     required this.onCommitCaptionTiming,
     required this.onAddText,
+    required this.onEditFraming,
   });
 
   final HighlightReel reel;
@@ -62,6 +63,11 @@ class VideoEditorTimeline extends StatefulWidget {
   final void Function(TextOverlay overlay, double newStart, double newEnd)
   onCommitCaptionTiming;
   final VoidCallback onAddText;
+
+  /// Opens the 画角編集 (framing) screen for the clip at this index —
+  /// fired by the toolbar's crop/rotate icon, enabled only when a clip is
+  /// selected.
+  final ValueChanged<int> onEditFraming;
 
   @override
   State<VideoEditorTimeline> createState() => _VideoEditorTimelineState();
@@ -416,6 +422,14 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
                 icon: const Icon(Icons.add_box_outlined),
                 tooltip: 'テキストを追加',
                 onPressed: widget.onAddText,
+                visualDensity: VisualDensity.compact,
+              ),
+              IconButton(
+                icon: const Icon(Icons.crop_rotate),
+                tooltip: '画角編集',
+                onPressed: _selectedClipIndex == null
+                    ? null
+                    : () => widget.onEditFraming(_selectedClipIndex!),
                 visualDensity: VisualDensity.compact,
               ),
             ],

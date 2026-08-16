@@ -9,6 +9,8 @@ class HighlightSegment {
     required this.startOffset,
     required this.duration,
     this.redoCount = 0,
+    this.frameRotationDegrees = 0,
+    this.frameScale = 1,
   });
 
   final String id;
@@ -28,11 +30,19 @@ class HighlightSegment {
   /// next-loudest one) instead of repeatedly landing on the same spot.
   final int redoCount;
 
+  /// User-adjustable framing (画角) applied when trimming this segment from
+  /// its source: rotation in degrees (any value, 1-degree granularity) and
+  /// a zoom multiplier (1 = no zoom). Set via the clip framing editor.
+  final double frameRotationDegrees;
+  final double frameScale;
+
   HighlightSegment copyWith({
     File? file,
     Duration? startOffset,
     Duration? duration,
     int? redoCount,
+    double? frameRotationDegrees,
+    double? frameScale,
   }) => HighlightSegment(
     id: id,
     file: file ?? this.file,
@@ -41,6 +51,8 @@ class HighlightSegment {
     startOffset: startOffset ?? this.startOffset,
     duration: duration ?? this.duration,
     redoCount: redoCount ?? this.redoCount,
+    frameRotationDegrees: frameRotationDegrees ?? this.frameRotationDegrees,
+    frameScale: frameScale ?? this.frameScale,
   );
 
   Map<String, dynamic> toJson() => {
@@ -51,6 +63,8 @@ class HighlightSegment {
     'startOffsetMs': startOffset.inMilliseconds,
     'durationMs': duration.inMilliseconds,
     'redoCount': redoCount,
+    'frameRotationDegrees': frameRotationDegrees,
+    'frameScale': frameScale,
   };
 
   factory HighlightSegment.fromJson(Map<String, dynamic> json) {
@@ -62,6 +76,9 @@ class HighlightSegment {
       startOffset: Duration(milliseconds: json['startOffsetMs'] as int? ?? 0),
       duration: Duration(milliseconds: json['durationMs'] as int? ?? 0),
       redoCount: json['redoCount'] as int? ?? 0,
+      frameRotationDegrees:
+          (json['frameRotationDegrees'] as num?)?.toDouble() ?? 0,
+      frameScale: (json['frameScale'] as num?)?.toDouble() ?? 1,
     );
   }
 }
