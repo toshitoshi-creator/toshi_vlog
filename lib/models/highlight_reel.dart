@@ -350,7 +350,9 @@ class HighlightReel extends ChangeNotifier {
   /// Cumulative start time of each segment, plus a final entry for the
   /// total duration. `starts[i]` is when segment `i` begins;
   /// `starts[segments.length]` is the total compiled (pre-BGM/text) length.
-  Future<List<Duration>> _segmentStartTimes() async {
+  /// Exposed publicly so the editor can draw clip-boundary tick marks and
+  /// know the total duration for its text-timing timeline.
+  Future<List<Duration>> segmentStartTimes() async {
     final starts = <Duration>[Duration.zero];
     var cursor = Duration.zero;
     for (final segment in _segments) {
@@ -516,17 +518,15 @@ class HighlightReel extends ChangeNotifier {
         .where((o) => o.renderedImagePath != null)
         .toList();
     if (renderedOverlays.isNotEmpty) {
-      final starts = await _segmentStartTimes();
-      final totalSeconds = starts.last.inMilliseconds / 1000;
+      final totalSeconds =
+          (await _probeDuration(current)).inMilliseconds / 1000;
       var step = 0;
       for (final overlay in renderedOverlays) {
         final image = File(overlay.renderedImagePath!);
         if (!await image.exists()) continue;
 
-        final startIdx = overlay.startClipIndex.clamp(0, _segments.length);
-        final endIdx = (overlay.endClipIndex + 1).clamp(0, _segments.length);
-        final startSeconds = starts[startIdx].inMilliseconds / 1000;
-        final endSeconds = starts[endIdx].inMilliseconds / 1000;
+        final clampedStart = overlay.startSeconds.clamp(0.0, totalSeconds);
+        final clampedEnd = overlay.endSeconds.clamp(0.0, totalSeconds);
 
         final stepOutput = File('${highlightsDir.path}/text_step_$step.mp4');
         if (await stepOutput.exists()) {
@@ -540,8 +540,8 @@ class HighlightReel extends ChangeNotifier {
 
         final filter =
             "[0:v][1:v]overlay=x=$px:y=$py:enable='between(t\\,"
-            '${startSeconds.toStringAsFixed(2)}\\,'
-            "${endSeconds.toStringAsFixed(2)})'[outv]";
+            '${clampedStart.toStringAsFixed(2)}\\,'
+            "${clampedEnd.toStringAsFixed(2)})'[outv]";
 
         final session = await FFmpegKit.executeWithArguments([
           '-y',
@@ -621,8 +621,8 @@ class HighlightReel extends ChangeNotifier {
           x: overlay.x,
           y: overlay.y,
           rotationDegrees: overlay.rotationDegrees,
-          startClipIndex: overlay.startClipIndex,
-          endClipIndex: overlay.endClipIndex,
+          startSeconds: overlay.startSeconds,
+          endSeconds: overlay.endSeconds,
           renderedImagePath: newImage.path,
           renderedWidth: overlay.renderedWidth,
           renderedHeight: overlay.renderedHeight,

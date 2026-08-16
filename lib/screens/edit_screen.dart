@@ -46,6 +46,7 @@ class _EditScreenState extends State<EditScreen> {
 
   VideoPlayerController? _previewController;
   int _previewRevision = -1;
+  String? _previewError;
   List<TextOverlay> _draftOverlays = [];
   final Map<String, GlobalKey> _overlayKeys = {};
   double _previewWidth = 1;
@@ -117,6 +118,7 @@ class _EditScreenState extends State<EditScreen> {
     final file = _activeReel.compiledFile;
     final oldController = _previewController;
     _previewController = null;
+    _previewError = null;
     _previewRevision = _activeReel.revision;
     await oldController?.dispose();
     if (file == null) {
@@ -128,7 +130,8 @@ class _EditScreenState extends State<EditScreen> {
       await controller.initialize();
       await controller.seekTo(Duration.zero);
       await controller.pause();
-    } catch (_) {
+    } catch (e) {
+      if (mounted) setState(() => _previewError = 'プレビューを読み込めませんでした: $e');
       return;
     }
     if (!mounted) {
@@ -182,6 +185,9 @@ class _EditScreenState extends State<EditScreen> {
       ).showSnackBar(const SnackBar(content: Text('先にクリップを追加してください')));
       return;
     }
+    final starts = await _activeReel.segmentStartTimes();
+    final totalSeconds = starts.last.inMilliseconds / 1000;
+    if (!mounted) return;
     final result = await showModalBottomSheet<TextOverlay>(
       context: context,
       isScrollControlled: true,
@@ -195,10 +201,13 @@ class _EditScreenState extends State<EditScreen> {
           x: 0.5,
           y: 0.5,
           rotationDegrees: 0,
-          startClipIndex: 0,
-          endClipIndex: segments.length - 1,
+          startSeconds: 0,
+          endSeconds: totalSeconds,
         ),
-        maxClipIndex: segments.length - 1,
+        totalSeconds: totalSeconds,
+        clipBoundarySeconds: [
+          for (final s in starts) s.inMilliseconds / 1000,
+        ],
       ),
     );
     if (result == null || result.text.trim().isEmpty) return;
@@ -206,14 +215,19 @@ class _EditScreenState extends State<EditScreen> {
   }
 
   Future<void> _editText(TextOverlay overlay) async {
-    final maxClipIndex = _activeReel.segments.length - 1;
-    if (maxClipIndex < 0) return;
+    if (_activeReel.segments.isEmpty) return;
+    final starts = await _activeReel.segmentStartTimes();
+    final totalSeconds = starts.last.inMilliseconds / 1000;
+    if (!mounted) return;
     final result = await showModalBottomSheet<TextOverlay>(
       context: context,
       isScrollControlled: true,
       builder: (context) => _TextOverlayFormSheet(
         initial: overlay,
-        maxClipIndex: maxClipIndex,
+        totalSeconds: totalSeconds,
+        clipBoundarySeconds: [
+          for (final s in starts) s.inMilliseconds / 1000,
+        ],
       ),
     );
     if (result == null) return;
@@ -471,7 +485,8 @@ class _EditScreenState extends State<EditScreen> {
                     title: Text(overlay.text),
                     subtitle: Text(
                       '${AppFont.byId(overlay.fontId).displayName} / '
-                      '${overlay.startClipIndex + 1}〜${overlay.endClipIndex + 1}番目',
+                      '${_formatSeconds(overlay.startSeconds)}〜'
+                      '${_formatSeconds(overlay.endSeconds)}',
                     ),
                     onTap: () => _editText(overlay),
                     trailing: IconButton(
@@ -562,10 +577,11 @@ class _EditScreenState extends State<EditScreen> {
                 if (controller != null && controller.value.isInitialized)
                   Positioned.fill(child: VideoPlayer(controller))
                 else
-                  const Center(
+                  Center(
                     child: Text(
-                      'まとめ動画がありません',
-                      style: TextStyle(color: Colors.white70),
+                      _previewError ?? 'まとめ動画がありません',
+                      textAlign: TextAlign.center,
+                      style: const TextStyle(color: Colors.white70),
                     ),
                   ),
                 for (final overlay in _draftOverlays)
@@ -638,11 +654,28 @@ extension _FirstOrNull<T> on Iterable<T> {
   T? get firstOrNull => isEmpty ? null : first;
 }
 
+String _formatSeconds(double seconds) {
+  final clamped = seconds < 0 ? 0.0 : seconds;
+  final minutes = clamped ~/ 60;
+  final rest = clamped - minutes * 60;
+  return '$minutes:${rest.toStringAsFixed(1).padLeft(4, '0')}';
+}
+
 class _TextOverlayFormSheet extends StatefulWidget {
-  const _TextOverlayFormSheet({required this.initial, required this.maxClipIndex});
+  const _TextOverlayFormSheet({
+    required this.initial,
+    required this.totalSeconds,
+    required this.clipBoundarySeconds,
+  });
 
   final TextOverlay initial;
-  final int maxClipIndex;
+
+  /// Total duration of the compiled video (pre-BGM/text), in seconds.
+  final double totalSeconds;
+
+  /// Cumulative clip start times (seconds), including 0 and [totalSeconds],
+  /// used to draw tick marks on the timeline for reference.
+  final List<double> clipBoundarySeconds;
 
   @override
   State<_TextOverlayFormSheet> createState() => _TextOverlayFormSheetState();
@@ -653,8 +686,8 @@ class _TextOverlayFormSheetState extends State<_TextOverlayFormSheet> {
   late String _fontId;
   late double _fontSize;
   late Color _color;
-  late int _startClip;
-  late int _endClip;
+  late double _startSeconds;
+  late double _endSeconds;
 
   static const _presetColors = [
     Colors.white,
@@ -678,8 +711,10 @@ class _TextOverlayFormSheetState extends State<_TextOverlayFormSheet> {
     _fontId = widget.initial.fontId;
     _fontSize = widget.initial.fontSize;
     _color = widget.initial.color;
-    _startClip = widget.initial.startClipIndex.clamp(0, widget.maxClipIndex);
-    _endClip = widget.initial.endClipIndex.clamp(0, widget.maxClipIndex);
+    final maxSeconds = widget.totalSeconds > 0 ? widget.totalSeconds : 0.0;
+    _startSeconds = widget.initial.startSeconds.clamp(0.0, maxSeconds);
+    _endSeconds = widget.initial.endSeconds.clamp(0.0, maxSeconds);
+    if (_startSeconds > _endSeconds) _startSeconds = _endSeconds;
   }
 
   @override
@@ -721,16 +756,16 @@ class _TextOverlayFormSheetState extends State<_TextOverlayFormSheet> {
       Navigator.of(context).pop();
       return;
     }
-    final start = _startClip <= _endClip ? _startClip : _endClip;
-    final end = _endClip >= _startClip ? _endClip : _startClip;
+    final start = _startSeconds <= _endSeconds ? _startSeconds : _endSeconds;
+    final end = _endSeconds >= _startSeconds ? _endSeconds : _startSeconds;
     Navigator.of(context).pop(
       widget.initial.copyWith(
         text: text,
         fontId: _fontId,
         fontSize: _fontSize,
         color: _color,
-        startClipIndex: start,
-        endClipIndex: end,
+        startSeconds: start,
+        endSeconds: end,
       ),
     );
   }
@@ -864,46 +899,37 @@ class _TextOverlayFormSheetState extends State<_TextOverlayFormSheet> {
               ],
             ),
             const SizedBox(height: 16),
-            Text('表示するクリップ範囲', style: Theme.of(context).textTheme.labelLarge),
-            const SizedBox(height: 8),
             Row(
+              mainAxisAlignment: MainAxisAlignment.spaceBetween,
               children: [
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    initialValue: _startClip,
-                    decoration: const InputDecoration(labelText: '開始'),
-                    items: [
-                      for (var i = 0; i <= widget.maxClipIndex; i++)
-                        DropdownMenuItem(value: i, child: Text('${i + 1}番目')),
-                    ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() {
-                        _startClip = v;
-                        if (_endClip < _startClip) _endClip = _startClip;
-                      });
-                    },
-                  ),
+                Text(
+                  '表示するタイミング',
+                  style: Theme.of(context).textTheme.labelLarge,
                 ),
-                const SizedBox(width: 12),
-                Expanded(
-                  child: DropdownButtonFormField<int>(
-                    initialValue: _endClip,
-                    decoration: const InputDecoration(labelText: '終了'),
-                    items: [
-                      for (var i = 0; i <= widget.maxClipIndex; i++)
-                        DropdownMenuItem(value: i, child: Text('${i + 1}番目')),
-                    ],
-                    onChanged: (v) {
-                      if (v == null) return;
-                      setState(() {
-                        _endClip = v;
-                        if (_startClip > _endClip) _startClip = _endClip;
-                      });
-                    },
-                  ),
+                Text(
+                  '${_formatSeconds(_startSeconds)} 〜 ${_formatSeconds(_endSeconds)}',
+                  style: Theme.of(context).textTheme.bodyMedium,
                 ),
               ],
+            ),
+            Text(
+              '縦の点線はクリップの区切りです。ドラッグして自由に表示区間を決められます。',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            _TimelineTicks(
+              totalSeconds: widget.totalSeconds,
+              boundarySeconds: widget.clipBoundarySeconds,
+            ),
+            RangeSlider(
+              values: RangeValues(_startSeconds, _endSeconds),
+              min: 0,
+              max: widget.totalSeconds > 0 ? widget.totalSeconds : 1,
+              onChanged: widget.totalSeconds <= 0
+                  ? null
+                  : (values) => setState(() {
+                      _startSeconds = values.start;
+                      _endSeconds = values.end;
+                    }),
             ),
             const SizedBox(height: 24),
             Row(
@@ -919,6 +945,53 @@ class _TextOverlayFormSheetState extends State<_TextOverlayFormSheet> {
             ),
           ],
         ),
+      ),
+    );
+  }
+}
+
+/// Thin vertical tick marks at each clip boundary, roughly aligned above a
+/// [RangeSlider]'s track (Material centers the track within the slider's
+/// full width, inset by its thumb radius on each side).
+class _TimelineTicks extends StatelessWidget {
+  const _TimelineTicks({
+    required this.totalSeconds,
+    required this.boundarySeconds,
+  });
+
+  final double totalSeconds;
+  final List<double> boundarySeconds;
+
+  static const _horizontalInset = 16.0;
+
+  @override
+  Widget build(BuildContext context) {
+    if (totalSeconds <= 0) return const SizedBox(height: 12);
+    return SizedBox(
+      height: 12,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final trackWidth = (constraints.maxWidth - _horizontalInset * 2)
+              .clamp(0.0, double.infinity);
+          return Stack(
+            children: [
+              for (final boundary in boundarySeconds)
+                if (boundary > 0 && boundary < totalSeconds)
+                  Positioned(
+                    left:
+                        _horizontalInset +
+                        (boundary / totalSeconds) * trackWidth -
+                        0.5,
+                    top: 0,
+                    child: Container(
+                      width: 1,
+                      height: 10,
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                  ),
+            ],
+          );
+        },
       ),
     );
   }

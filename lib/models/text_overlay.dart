@@ -16,8 +16,8 @@ class TextOverlay {
     required this.x,
     required this.y,
     required this.rotationDegrees,
-    required this.startClipIndex,
-    required this.endClipIndex,
+    required this.startSeconds,
+    required this.endSeconds,
     this.renderedImagePath,
     this.renderedWidth,
     this.renderedHeight,
@@ -36,9 +36,11 @@ class TextOverlay {
   final double y;
   final double rotationDegrees;
 
-  /// Inclusive clip index range (0-based) this caption is visible for.
-  final int startClipIndex;
-  final int endClipIndex;
+  /// Visible time range, in seconds from the start of the compiled video
+  /// (before BGM/other overlays are applied). Freely chosen on a timeline,
+  /// not snapped to clip boundaries.
+  final double startSeconds;
+  final double endSeconds;
 
   final String? renderedImagePath;
   final int? renderedWidth;
@@ -52,8 +54,8 @@ class TextOverlay {
     double? x,
     double? y,
     double? rotationDegrees,
-    int? startClipIndex,
-    int? endClipIndex,
+    double? startSeconds,
+    double? endSeconds,
     String? renderedImagePath,
     int? renderedWidth,
     int? renderedHeight,
@@ -67,8 +69,8 @@ class TextOverlay {
       x: x ?? this.x,
       y: y ?? this.y,
       rotationDegrees: rotationDegrees ?? this.rotationDegrees,
-      startClipIndex: startClipIndex ?? this.startClipIndex,
-      endClipIndex: endClipIndex ?? this.endClipIndex,
+      startSeconds: startSeconds ?? this.startSeconds,
+      endSeconds: endSeconds ?? this.endSeconds,
       renderedImagePath: renderedImagePath ?? this.renderedImagePath,
       renderedWidth: renderedWidth ?? this.renderedWidth,
       renderedHeight: renderedHeight ?? this.renderedHeight,
@@ -84,8 +86,8 @@ class TextOverlay {
     'x': x,
     'y': y,
     'rotationDegrees': rotationDegrees,
-    'startClipIndex': startClipIndex,
-    'endClipIndex': endClipIndex,
+    'startSeconds': startSeconds,
+    'endSeconds': endSeconds,
     'renderedImagePath': renderedImagePath,
     'renderedWidth': renderedWidth,
     'renderedHeight': renderedHeight,
@@ -100,8 +102,8 @@ class TextOverlay {
     x: (json['x'] as num).toDouble(),
     y: (json['y'] as num).toDouble(),
     rotationDegrees: (json['rotationDegrees'] as num).toDouble(),
-    startClipIndex: json['startClipIndex'] as int,
-    endClipIndex: json['endClipIndex'] as int,
+    startSeconds: (json['startSeconds'] as num).toDouble(),
+    endSeconds: (json['endSeconds'] as num).toDouble(),
     renderedImagePath: json['renderedImagePath'] as String?,
     renderedWidth: json['renderedWidth'] as int?,
     renderedHeight: json['renderedHeight'] as int?,
