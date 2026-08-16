@@ -82,7 +82,6 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
   bool? _draggingCaptionLeftEdge;
   double _gestureStartCaptionStart = 0;
   double _gestureStartCaptionEnd = 0;
-  double _captionAccumulatedDeltaSeconds = 0;
   double? _liveCaptionStart;
   double? _liveCaptionEnd;
 
@@ -276,7 +275,9 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
     });
   }
 
-  // ---- Caption timing drag ----
+  // ---- Caption timing drag (long-press + move, mirroring the clip block's
+  // proven long-press-based reorder gesture so it doesn't compete with the
+  // ancestor horizontal ScrollView's own drag-to-scroll recognizer) ----
   // _draggingCaptionLeftEdge: true = resize left edge, false = resize right
   // edge, null = move the whole bar (both edges shift together).
 
@@ -286,28 +287,31 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
       _draggingCaptionLeftEdge = leftEdge;
       _gestureStartCaptionStart = overlay.startSeconds;
       _gestureStartCaptionEnd = overlay.endSeconds;
-      _captionAccumulatedDeltaSeconds = 0;
       _liveCaptionStart = overlay.startSeconds;
       _liveCaptionEnd = overlay.endSeconds;
     });
   }
 
-  void _updateCaptionDrag(double deltaDx) {
-    _captionAccumulatedDeltaSeconds += deltaDx / _pixelsPerSecond;
+  /// [totalDx] is the cumulative horizontal offset since the long-press was
+  /// recognized (LongPressMoveUpdateDetails.offsetFromOrigin), not a
+  /// per-frame delta, so it's applied directly to the gesture's starting
+  /// values rather than accumulated.
+  void _updateCaptionDrag(double totalDx) {
+    final deltaSeconds = totalDx / _pixelsPerSecond;
     const minGap = 0.2;
     var start = _gestureStartCaptionStart;
     var end = _gestureStartCaptionEnd;
     if (_draggingCaptionLeftEdge == true) {
-      start = (_gestureStartCaptionStart + _captionAccumulatedDeltaSeconds)
+      start = (_gestureStartCaptionStart + deltaSeconds)
           .clamp(0.0, _gestureStartCaptionEnd - minGap);
     } else if (_draggingCaptionLeftEdge == false) {
-      end = (_gestureStartCaptionEnd + _captionAccumulatedDeltaSeconds).clamp(
+      end = (_gestureStartCaptionEnd + deltaSeconds).clamp(
         _gestureStartCaptionStart + minGap,
         _totalSeconds,
       );
     } else {
       final duration = _gestureStartCaptionEnd - _gestureStartCaptionStart;
-      final shift = _captionAccumulatedDeltaSeconds.clamp(
+      final shift = deltaSeconds.clamp(
         -_gestureStartCaptionStart,
         _totalSeconds - _gestureStartCaptionEnd,
       );
@@ -661,11 +665,11 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => widget.onTapCaption(overlay),
-                onPanStart: (_) => _beginCaptionDrag(overlay),
-                onPanUpdate: (details) =>
-                    _updateCaptionDrag(details.delta.dx),
-                onPanEnd: (_) => _endCaptionDrag(overlay),
-                onPanCancel: _cancelCaptionDrag,
+                onLongPressStart: (_) => _beginCaptionDrag(overlay),
+                onLongPressMoveUpdate: (details) =>
+                    _updateCaptionDrag(details.offsetFromOrigin.dx),
+                onLongPressEnd: (_) => _endCaptionDrag(overlay),
+                onLongPressCancel: _cancelCaptionDrag,
                 child: Padding(
                   padding: EdgeInsets.symmetric(horizontal: _handleWidth + 2),
                   child: Align(
@@ -684,11 +688,12 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
               alignment: Alignment.centerLeft,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onPanStart: (_) => _beginCaptionDrag(overlay, leftEdge: true),
-                onPanUpdate: (details) =>
-                    _updateCaptionDrag(details.delta.dx),
-                onPanEnd: (_) => _endCaptionDrag(overlay),
-                onPanCancel: _cancelCaptionDrag,
+                onLongPressStart: (_) =>
+                    _beginCaptionDrag(overlay, leftEdge: true),
+                onLongPressMoveUpdate: (details) =>
+                    _updateCaptionDrag(details.offsetFromOrigin.dx),
+                onLongPressEnd: (_) => _endCaptionDrag(overlay),
+                onLongPressCancel: _cancelCaptionDrag,
                 child: Container(
                   width: _handleWidth,
                   color: Colors.black26,
@@ -700,11 +705,12 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
               alignment: Alignment.centerRight,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onPanStart: (_) => _beginCaptionDrag(overlay, leftEdge: false),
-                onPanUpdate: (details) =>
-                    _updateCaptionDrag(details.delta.dx),
-                onPanEnd: (_) => _endCaptionDrag(overlay),
-                onPanCancel: _cancelCaptionDrag,
+                onLongPressStart: (_) =>
+                    _beginCaptionDrag(overlay, leftEdge: false),
+                onLongPressMoveUpdate: (details) =>
+                    _updateCaptionDrag(details.offsetFromOrigin.dx),
+                onLongPressEnd: (_) => _endCaptionDrag(overlay),
+                onLongPressCancel: _cancelCaptionDrag,
                 child: Container(
                   width: _handleWidth,
                   color: Colors.black26,
