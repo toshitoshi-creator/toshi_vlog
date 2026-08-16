@@ -53,8 +53,8 @@ class VideoEditorTimeline extends StatefulWidget {
 class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
   static const _rulerHeight = 20.0;
   static const _clipTrackHeight = 56.0;
-  static const _captionRowHeight = 28.0;
-  static const _handleWidth = 16.0;
+  static const _captionRowHeight = 40.0;
+  static const _handleWidth = 22.0;
   static const _minZoom = 20.0;
   static const _maxZoom = 320.0;
 
@@ -80,6 +80,7 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
   bool? _draggingCaptionLeftEdge;
   double _gestureStartCaptionStart = 0;
   double _gestureStartCaptionEnd = 0;
+  double _captionAccumulatedDeltaSeconds = 0;
   double? _liveCaptionStart;
   double? _liveCaptionEnd;
 
@@ -274,33 +275,42 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
   }
 
   // ---- Caption timing drag ----
+  // _draggingCaptionLeftEdge: true = resize left edge, false = resize right
+  // edge, null = move the whole bar (both edges shift together).
 
-  void _beginCaptionTrim(TextOverlay overlay, {required bool leftEdge}) {
+  void _beginCaptionDrag(TextOverlay overlay, {bool? leftEdge}) {
     setState(() {
       _draggingCaptionId = overlay.id;
       _draggingCaptionLeftEdge = leftEdge;
       _gestureStartCaptionStart = overlay.startSeconds;
       _gestureStartCaptionEnd = overlay.endSeconds;
+      _captionAccumulatedDeltaSeconds = 0;
       _liveCaptionStart = overlay.startSeconds;
       _liveCaptionEnd = overlay.endSeconds;
     });
   }
 
-  void _updateCaptionTrim(double deltaDx) {
-    final deltaSeconds = deltaDx / _pixelsPerSecond;
+  void _updateCaptionDrag(double deltaDx) {
+    _captionAccumulatedDeltaSeconds += deltaDx / _pixelsPerSecond;
     const minGap = 0.2;
-    var start = _liveCaptionStart ?? _gestureStartCaptionStart;
-    var end = _liveCaptionEnd ?? _gestureStartCaptionEnd;
+    var start = _gestureStartCaptionStart;
+    var end = _gestureStartCaptionEnd;
     if (_draggingCaptionLeftEdge == true) {
-      start = (_gestureStartCaptionStart + deltaSeconds).clamp(
-        0.0,
-        _gestureStartCaptionEnd - minGap,
-      );
-    } else {
-      end = (_gestureStartCaptionEnd + deltaSeconds).clamp(
+      start = (_gestureStartCaptionStart + _captionAccumulatedDeltaSeconds)
+          .clamp(0.0, _gestureStartCaptionEnd - minGap);
+    } else if (_draggingCaptionLeftEdge == false) {
+      end = (_gestureStartCaptionEnd + _captionAccumulatedDeltaSeconds).clamp(
         _gestureStartCaptionStart + minGap,
         _totalSeconds,
       );
+    } else {
+      final duration = _gestureStartCaptionEnd - _gestureStartCaptionStart;
+      final shift = _captionAccumulatedDeltaSeconds.clamp(
+        -_gestureStartCaptionStart,
+        _totalSeconds - _gestureStartCaptionEnd,
+      );
+      start = _gestureStartCaptionStart + shift;
+      end = start + duration;
     }
     setState(() {
       _liveCaptionStart = start;
@@ -308,7 +318,7 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
     });
   }
 
-  void _endCaptionTrim(TextOverlay overlay) {
+  void _endCaptionDrag(TextOverlay overlay) {
     final start = _liveCaptionStart;
     final end = _liveCaptionEnd;
     setState(() {
@@ -322,7 +332,7 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
     }
   }
 
-  void _cancelCaptionTrim() {
+  void _cancelCaptionDrag() {
     setState(() {
       _draggingCaptionId = null;
       _draggingCaptionLeftEdge = null;
@@ -637,8 +647,13 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
                 onTap: () => widget.onTapCaption(overlay),
+                onPanStart: (_) => _beginCaptionDrag(overlay),
+                onPanUpdate: (details) =>
+                    _updateCaptionDrag(details.delta.dx),
+                onPanEnd: (_) => _endCaptionDrag(overlay),
+                onPanCancel: _cancelCaptionDrag,
                 child: Padding(
-                  padding: const EdgeInsets.symmetric(horizontal: 14),
+                  padding: EdgeInsets.symmetric(horizontal: _handleWidth + 2),
                   child: Align(
                     alignment: Alignment.centerLeft,
                     child: Text(
@@ -655,15 +670,15 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
               alignment: Alignment.centerLeft,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onPanStart: (_) =>
-                    _beginCaptionTrim(overlay, leftEdge: true),
+                onPanStart: (_) => _beginCaptionDrag(overlay, leftEdge: true),
                 onPanUpdate: (details) =>
-                    _updateCaptionTrim(details.delta.dx),
-                onPanEnd: (_) => _endCaptionTrim(overlay),
-                onPanCancel: _cancelCaptionTrim,
-                child: SizedBox(
+                    _updateCaptionDrag(details.delta.dx),
+                onPanEnd: (_) => _endCaptionDrag(overlay),
+                onPanCancel: _cancelCaptionDrag,
+                child: Container(
                   width: _handleWidth,
-                  child: Icon(Icons.drag_indicator, size: 12, color: textColor),
+                  color: Colors.black26,
+                  child: Icon(Icons.drag_indicator, size: 14, color: textColor),
                 ),
               ),
             ),
@@ -671,15 +686,15 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
               alignment: Alignment.centerRight,
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onPanStart: (_) =>
-                    _beginCaptionTrim(overlay, leftEdge: false),
+                onPanStart: (_) => _beginCaptionDrag(overlay, leftEdge: false),
                 onPanUpdate: (details) =>
-                    _updateCaptionTrim(details.delta.dx),
-                onPanEnd: (_) => _endCaptionTrim(overlay),
-                onPanCancel: _cancelCaptionTrim,
-                child: SizedBox(
+                    _updateCaptionDrag(details.delta.dx),
+                onPanEnd: (_) => _endCaptionDrag(overlay),
+                onPanCancel: _cancelCaptionDrag,
+                child: Container(
                   width: _handleWidth,
-                  child: Icon(Icons.drag_indicator, size: 12, color: textColor),
+                  color: Colors.black26,
+                  child: Icon(Icons.drag_indicator, size: 14, color: textColor),
                 ),
               ),
             ),
