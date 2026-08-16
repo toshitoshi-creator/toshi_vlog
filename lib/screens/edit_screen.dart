@@ -17,6 +17,7 @@ import '../models/text_overlay.dart';
 import '../models/video_library.dart';
 import '../widgets/clip_management_section.dart';
 import '../widgets/compiled_preview_section.dart';
+import '../widgets/video_editor_timeline.dart';
 import 'sound_library_screen.dart';
 
 class EditScreen extends StatefulWidget {
@@ -52,8 +53,6 @@ class _EditScreenState extends State<EditScreen> {
   List<TextOverlay> _draftOverlays = [];
   final Map<String, GlobalKey> _overlayKeys = {};
   double _previewWidth = 1;
-  List<double> _clipBoundarySeconds = [];
-  double _totalSeconds = 0;
 
   String? _activeOverlayId;
   double _gestureStartFontSize = 0;
@@ -168,17 +167,6 @@ class _EditScreenState extends State<EditScreen> {
     _previewRevision = _activeReel.revision;
     await oldController?.dispose();
 
-    if (_activeReel.segments.isNotEmpty) {
-      final starts = await _activeReel.segmentStartTimes();
-      _clipBoundarySeconds = [for (final s in starts) s.inMilliseconds / 1000];
-      _totalSeconds = _clipBoundarySeconds.isEmpty
-          ? 0
-          : _clipBoundarySeconds.last;
-    } else {
-      _clipBoundarySeconds = [];
-      _totalSeconds = 0;
-    }
-
     if (file == null) {
       if (mounted) setState(() {});
       return;
@@ -243,7 +231,7 @@ class _EditScreenState extends State<EditScreen> {
       ).showSnackBar(const SnackBar(content: Text('先にクリップを追加してください')));
       return;
     }
-    final starts = await _activeReel.segmentStartTimes();
+    final starts = _activeReel.segmentStartTimes();
     final totalSeconds = starts.last.inMilliseconds / 1000;
     if (!mounted) return;
     final result = await showModalBottomSheet<TextOverlay>(
@@ -274,7 +262,7 @@ class _EditScreenState extends State<EditScreen> {
 
   Future<void> _editText(TextOverlay overlay) async {
     if (_activeReel.segments.isEmpty) return;
-    final starts = await _activeReel.segmentStartTimes();
+    final starts = _activeReel.segmentStartTimes();
     final totalSeconds = starts.last.inMilliseconds / 1000;
     if (!mounted) return;
     final result = await showModalBottomSheet<TextOverlay>(
@@ -452,6 +440,32 @@ class _EditScreenState extends State<EditScreen> {
     await widget.compilationLibrary.deleteSaved(id);
   }
 
+  Future<void> _handleCommitClipTrim(
+    int index, {
+    Duration? newStartOffset,
+    Duration? newDuration,
+  }) {
+    return _activeReel.trimSegment(
+      index,
+      newStartOffset: newStartOffset,
+      newDuration: newDuration,
+    );
+  }
+
+  /// Timing-only caption edit from the timeline's drag handles. Skips the
+  /// RepaintBoundary re-render that font/color/position changes need, since
+  /// the caption's rendered appearance is unchanged — only when it's
+  /// visible.
+  Future<void> _handleCommitCaptionTiming(
+    TextOverlay overlay,
+    double newStart,
+    double newEnd,
+  ) {
+    return _activeReel.upsertTextOverlay(
+      overlay.copyWith(startSeconds: newStart, endSeconds: newEnd),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final reel = _activeReel;
@@ -483,7 +497,18 @@ class _EditScreenState extends State<EditScreen> {
               if (reel.isProcessing)
                 const LinearProgressIndicator(minHeight: 3),
               _buildPreview(),
-              _buildTimelineOverview(),
+              VideoEditorTimeline(
+                reel: reel,
+                segments: reel.segments,
+                overlays: _draftOverlays,
+                previewController: _previewController,
+                onReorderClip: (oldIndex, newIndex) =>
+                    reel.reorder(oldIndex, newIndex),
+                onCommitClipTrim: _handleCommitClipTrim,
+                onTapCaption: _editText,
+                onCommitCaptionTiming: _handleCommitCaptionTiming,
+              ),
+              const SizedBox(height: 8),
               Padding(
                 padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
                 child: CompiledPreviewSection(
@@ -669,123 +694,6 @@ class _EditScreenState extends State<EditScreen> {
             ),
           );
         },
-      ),
-    );
-  }
-
-  /// Greedily assigns each overlay to the first row whose existing entries
-  /// don't overlap it in time, so simultaneous captions stack into separate
-  /// rows instead of drawing on top of each other.
-  List<List<TextOverlay>> _layoutTimelineRows(List<TextOverlay> overlays) {
-    final rows = <List<TextOverlay>>[];
-    final sorted = [...overlays]
-      ..sort((a, b) => a.startSeconds.compareTo(b.startSeconds));
-    for (final overlay in sorted) {
-      final row = rows.firstWhere(
-        (row) => row.every(
-          (existing) =>
-              overlay.startSeconds >= existing.endSeconds ||
-              overlay.endSeconds <= existing.startSeconds,
-        ),
-        orElse: () {
-          final newRow = <TextOverlay>[];
-          rows.add(newRow);
-          return newRow;
-        },
-      );
-      row.add(overlay);
-    }
-    return rows;
-  }
-
-  Widget _buildTimelineOverview() {
-    if (_draftOverlays.isEmpty || _totalSeconds <= 0) {
-      return const SizedBox.shrink();
-    }
-    final rows = _layoutTimelineRows(_draftOverlays);
-    const rowHeight = 30.0;
-    const inset = 4.0;
-    return Padding(
-      padding: const EdgeInsets.fromLTRB(16, 12, 16, 4),
-      child: Column(
-        crossAxisAlignment: CrossAxisAlignment.start,
-        children: [
-          Text('テキストのタイムライン', style: Theme.of(context).textTheme.labelLarge),
-          const SizedBox(height: 4),
-          LayoutBuilder(
-            builder: (context, constraints) {
-              final trackWidth = (constraints.maxWidth - inset * 2).clamp(
-                0.0,
-                double.infinity,
-              );
-              return SizedBox(
-                height: rowHeight * rows.length,
-                child: Stack(
-                  children: [
-                    for (final boundary in _clipBoundarySeconds)
-                      if (boundary > 0 && boundary < _totalSeconds)
-                        Positioned(
-                          left:
-                              inset +
-                              (boundary / _totalSeconds) * trackWidth -
-                              0.5,
-                          top: 0,
-                          bottom: 0,
-                          child: Container(
-                            width: 1,
-                            color: Theme.of(context).colorScheme.outlineVariant,
-                          ),
-                        ),
-                    for (
-                      var rowIndex = 0;
-                      rowIndex < rows.length;
-                      rowIndex++
-                    )
-                      for (final overlay in rows[rowIndex])
-                        Positioned(
-                          left:
-                              inset +
-                              (overlay.startSeconds / _totalSeconds) *
-                                  trackWidth,
-                          width:
-                              (((overlay.endSeconds - overlay.startSeconds) /
-                                          _totalSeconds) *
-                                      trackWidth)
-                                  .clamp(6.0, trackWidth),
-                          top: rowIndex * rowHeight,
-                          height: rowHeight - 4,
-                          child: GestureDetector(
-                            onTap: () => _editText(overlay),
-                            child: Container(
-                              alignment: Alignment.centerLeft,
-                              padding: const EdgeInsets.symmetric(
-                                horizontal: 4,
-                              ),
-                              decoration: BoxDecoration(
-                                color: overlay.color.withValues(alpha: 0.85),
-                                borderRadius: BorderRadius.circular(4),
-                                border: Border.all(color: Colors.black26),
-                              ),
-                              child: Text(
-                                overlay.text,
-                                maxLines: 1,
-                                overflow: TextOverflow.ellipsis,
-                                style: TextStyle(
-                                  fontSize: 11,
-                                  color: overlay.color.computeLuminance() > 0.5
-                                      ? Colors.black
-                                      : Colors.white,
-                                ),
-                              ),
-                            ),
-                          ),
-                        ),
-                  ],
-                ),
-              );
-            },
-          ),
-        ],
       ),
     );
   }

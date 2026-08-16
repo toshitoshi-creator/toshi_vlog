@@ -4,9 +4,16 @@ import 'package:flutter/material.dart';
 import 'package:video_player/video_player.dart';
 
 class VideoThumbnail extends StatefulWidget {
-  const VideoThumbnail({super.key, required this.file});
+  const VideoThumbnail({
+    super.key,
+    required this.file,
+    this.width = 96,
+    this.height = 64,
+  });
 
   final File file;
+  final double width;
+  final double height;
 
   @override
   State<VideoThumbnail> createState() => _VideoThumbnailState();
@@ -59,8 +66,8 @@ class _VideoThumbnailState extends State<VideoThumbnail> {
     return ClipRRect(
       borderRadius: BorderRadius.circular(8),
       child: SizedBox(
-        width: 96,
-        height: 64,
+        width: widget.width,
+        height: widget.height,
         child: controller != null && controller.value.isInitialized
             ? FittedBox(
                 fit: BoxFit.cover,

@@ -128,6 +128,25 @@ class HighlightReel extends ChangeNotifier {
       }
     }
 
+    // Segments saved before startOffset/duration were tracked come back
+    // with duration == Duration.zero; probe the actual trimmed file once to
+    // backfill them so the editor timeline has real lengths to lay out.
+    if (_segments.any((s) => s.duration == Duration.zero)) {
+      final backfilled = <HighlightSegment>[];
+      for (final segment in _segments) {
+        if (segment.duration == Duration.zero) {
+          final probed = await _probeDuration(segment.file);
+          backfilled.add(
+            segment.copyWith(duration: probed, startOffset: Duration.zero),
+          );
+        } else {
+          backfilled.add(segment);
+        }
+      }
+      _segments = backfilled;
+      await _persistManifest();
+    }
+
     final settings = await _settingsFile();
     if (await settings.exists()) {
       try {
@@ -257,7 +276,12 @@ class HighlightReel extends ChangeNotifier {
     final id = DateTime.now().microsecondsSinceEpoch.toString();
     final outputFile = File('${segmentsDir.path}/$id.mp4');
     final startOffset = await _computeStartOffset(sourceClip);
-    await _trimClip(sourceClip, outputFile, startOffset);
+    final actualDuration = await _trimClip(
+      sourceClip,
+      outputFile,
+      startOffset,
+      _clipDuration,
+    );
 
     _segments = [
       ..._segments,
@@ -266,6 +290,8 @@ class HighlightReel extends ChangeNotifier {
         file: outputFile,
         sourcePath: sourceClip.path,
         createdAt: DateTime.now(),
+        startOffset: startOffset,
+        duration: actualDuration,
       ),
     ];
     await _persistManifest();
@@ -276,7 +302,8 @@ class HighlightReel extends ChangeNotifier {
   /// this naturally lands somewhere different each time; for
   /// [ClipTrimMode.loudest] it cycles to the next-loudest candidate window
   /// instead of repeating the same (loudest) one. A no-op for
-  /// [ClipTrimMode.start].
+  /// [ClipTrimMode.start]. Reverts to the current global [clipDuration],
+  /// discarding any custom length set for this clip via [trimSegment].
   Future<void> redo(int index) => _guarded(() async {
     final segment = _segments[index];
     final source = File(segment.sourcePath);
@@ -285,15 +312,76 @@ class HighlightReel extends ChangeNotifier {
     }
     final nextRedoCount = segment.redoCount + 1;
     final startOffset = await _computeStartOffset(source, rank: nextRedoCount);
-    await _trimClip(source, segment.file, startOffset);
+    final actualDuration = await _trimClip(
+      source,
+      segment.file,
+      startOffset,
+      _clipDuration,
+    );
 
     _segments = [
       for (final s in _segments)
-        if (s.id == segment.id) s.copyWith(redoCount: nextRedoCount) else s,
+        if (s.id == segment.id)
+          s.copyWith(
+            redoCount: nextRedoCount,
+            startOffset: startOffset,
+            duration: actualDuration,
+          )
+        else
+          s,
     ];
     await _persistManifest();
     await _recompose();
   }, 'クリップの作り直しに失敗しました');
+
+  /// Re-trims a segment's window directly, e.g. by dragging its edges on
+  /// the editor timeline. Either argument may be omitted to keep that side
+  /// of the current window unchanged. Clamped to the source recording's
+  /// actual bounds and a minimum length.
+  Future<void> trimSegment(
+    int index, {
+    Duration? newStartOffset,
+    Duration? newDuration,
+  }) => _guarded(() async {
+    final segment = _segments[index];
+    final source = File(segment.sourcePath);
+    if (!await source.exists()) {
+      throw Exception('元の動画が見つかりません');
+    }
+    final sourceDuration = await _probeDuration(source);
+
+    var offset = newStartOffset ?? segment.startOffset;
+    var duration = newDuration ?? segment.duration;
+    if (offset < Duration.zero) offset = Duration.zero;
+    if (offset > sourceDuration) offset = sourceDuration;
+    const minDuration = Duration(milliseconds: 200);
+    if (duration < minDuration) duration = minDuration;
+    if (offset + duration > sourceDuration) {
+      duration = sourceDuration - offset;
+      if (duration < minDuration) {
+        offset = sourceDuration - minDuration;
+        if (offset < Duration.zero) offset = Duration.zero;
+        duration = sourceDuration - offset;
+      }
+    }
+
+    final actualDuration = await _trimClip(
+      source,
+      segment.file,
+      offset,
+      duration,
+    );
+
+    _segments = [
+      for (final s in _segments)
+        if (s.id == segment.id)
+          s.copyWith(startOffset: offset, duration: actualDuration)
+        else
+          s,
+    ];
+    await _persistManifest();
+    await _recompose();
+  }, 'クリップのトリミングに失敗しました');
 
   /// [newIndex] is the target index after [oldIndex] has been removed
   /// (i.e. as reported by [ReorderableListView]'s `onReorderItem`).
@@ -352,11 +440,11 @@ class HighlightReel extends ChangeNotifier {
   /// `starts[segments.length]` is the total compiled (pre-BGM/text) length.
   /// Exposed publicly so the editor can draw clip-boundary tick marks and
   /// know the total duration for its text-timing timeline.
-  Future<List<Duration>> segmentStartTimes() async {
+  List<Duration> segmentStartTimes() {
     final starts = <Duration>[Duration.zero];
     var cursor = Duration.zero;
     for (final segment in _segments) {
-      cursor += await _probeDuration(segment.file);
+      cursor += segment.duration;
       starts.add(cursor);
     }
     return starts;
@@ -421,16 +509,20 @@ class HighlightReel extends ChangeNotifier {
     return double.tryParse(match.group(1)!);
   }
 
-  Future<void> _trimClip(
+  /// Trims [source] starting at [startOffset] for [duration] into [output],
+  /// returning the trimmed file's actual duration (which can be shorter than
+  /// requested if [startOffset]+[duration] runs past the end of [source]).
+  Future<Duration> _trimClip(
     File source,
     File output,
     Duration startOffset,
+    Duration duration,
   ) async {
     final session = await FFmpegKit.executeWithArguments([
       '-y',
       '-ss', (startOffset.inMilliseconds / 1000).toStringAsFixed(2),
       '-i', source.path,
-      '-t', (_clipDuration.inMilliseconds / 1000).toStringAsFixed(2),
+      '-t', (duration.inMilliseconds / 1000).toStringAsFixed(2),
       '-vf',
       'scale=w=$canvasWidth:h=$canvasHeight:force_original_aspect_ratio=decrease,'
           'pad=$canvasWidth:$canvasHeight:(ow-iw)/2:(oh-ih)/2,setsar=1',
@@ -446,7 +538,13 @@ class HighlightReel extends ChangeNotifier {
     if (!ReturnCode.isSuccess(returnCode)) {
       throw Exception('ffmpeg trim failed');
     }
+    return _probeDuration(output);
   }
+
+  /// The full duration of a segment's original source recording, used to
+  /// clamp how far the editor timeline can extend a clip's trim window.
+  Future<Duration> sourceDurationFor(HighlightSegment segment) =>
+      _probeDuration(File(segment.sourcePath));
 
   Future<void> _recompose() async {
     final output = await _compiledOutputFile();
@@ -607,6 +705,8 @@ class HighlightReel extends ChangeNotifier {
           file: newFile,
           sourcePath: segment.sourcePath,
           createdAt: segment.createdAt,
+          startOffset: segment.startOffset,
+          duration: segment.duration,
           redoCount: segment.redoCount,
         ),
       );
