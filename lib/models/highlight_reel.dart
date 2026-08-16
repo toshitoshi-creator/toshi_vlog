@@ -538,10 +538,16 @@ class HighlightReel extends ChangeNotifier {
         final px = (overlay.x * canvasWidth - width / 2).round();
         final py = (overlay.y * canvasHeight - height / 2).round();
 
+        // The PNG overlay carries an alpha channel, which can leave the
+        // filter graph's output in a pixel format (e.g. yuva420p) that
+        // encodes "successfully" but that AVFoundation/video_player can't
+        // decode as anything but black. Force back to plain yuv420p before
+        // encoding, and pick the encoder/pixel format explicitly rather
+        // than relying on ffmpeg's implicit per-container defaults.
         final filter =
             "[0:v][1:v]overlay=x=$px:y=$py:enable='between(t\\,"
             '${clampedStart.toStringAsFixed(2)}\\,'
-            "${clampedEnd.toStringAsFixed(2)})'[outv]";
+            "${clampedEnd.toStringAsFixed(2)})',format=yuv420p[outv]";
 
         final session = await FFmpegKit.executeWithArguments([
           '-y',
@@ -553,6 +559,9 @@ class HighlightReel extends ChangeNotifier {
           '-filter_complex', filter,
           '-map', '[outv]',
           '-map', '0:a?',
+          '-c:v', 'libx264',
+          '-pix_fmt', 'yuv420p',
+          '-preset', 'veryfast',
           '-c:a', 'copy',
           stepOutput.path,
         ]);
