@@ -24,6 +24,8 @@ class VideoEditorTimeline extends StatefulWidget {
     required this.previewController,
     required this.onReorderClip,
     required this.onCommitClipTrim,
+    required this.selectedCaptionId,
+    required this.onSelectCaption,
     required this.onTapCaption,
     required this.onCommitCaptionTiming,
     required this.onAddText,
@@ -43,6 +45,19 @@ class VideoEditorTimeline extends StatefulWidget {
     Duration? newDuration,
   })
   onCommitClipTrim;
+
+  /// Id of the caption currently selected (shown as a draggable widget in
+  /// the preview), or null if none. Owned by the parent since the preview
+  /// needs to know it too.
+  final String? selectedCaptionId;
+
+  /// Fired when tapping an unselected caption bar — selects it without
+  /// opening the edit form, so the first tap can be used to make the
+  /// caption visible/positionable in the preview.
+  final ValueChanged<String> onSelectCaption;
+
+  /// Fired when tapping a caption bar that's already selected — opens the
+  /// font/color/size/timing edit form.
   final ValueChanged<TextOverlay> onTapCaption;
   final void Function(TextOverlay overlay, double newStart, double newEnd)
   onCommitCaptionTiming;
@@ -347,6 +362,17 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
     });
   }
 
+  /// First tap on a caption bar selects it (so it becomes visible/
+  /// draggable in the preview); tapping the already-selected bar again
+  /// opens the edit form instead.
+  void _handleCaptionTap(TextOverlay overlay) {
+    if (widget.selectedCaptionId == overlay.id) {
+      widget.onTapCaption(overlay);
+    } else {
+      widget.onSelectCaption(overlay.id);
+    }
+  }
+
   // ---- Playhead ----
 
   void _seekToDx(double dx) {
@@ -632,6 +658,7 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
 
   Widget _buildCaptionBar(TextOverlay overlay) {
     final dragging = _draggingCaptionId == overlay.id;
+    final selected = widget.selectedCaptionId == overlay.id;
     final start = dragging
         ? _liveCaptionStart ?? overlay.startSeconds
         : overlay.startSeconds;
@@ -656,7 +683,12 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
         decoration: BoxDecoration(
           color: overlay.color.withValues(alpha: 0.85),
           borderRadius: BorderRadius.circular(4),
-          border: Border.all(color: Colors.black26),
+          border: Border.all(
+            color: selected
+                ? Theme.of(context).colorScheme.primary
+                : Colors.black26,
+            width: selected ? 2 : 1,
+          ),
         ),
         clipBehavior: Clip.antiAlias,
         child: Stack(
@@ -664,7 +696,7 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
             Positioned.fill(
               child: GestureDetector(
                 behavior: HitTestBehavior.opaque,
-                onTap: () => widget.onTapCaption(overlay),
+                onTap: () => _handleCaptionTap(overlay),
                 onLongPressStart: (_) => _beginCaptionDrag(overlay),
                 onLongPressMoveUpdate: (details) =>
                     _updateCaptionDrag(details.offsetFromOrigin.dx),

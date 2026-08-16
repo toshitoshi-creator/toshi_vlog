@@ -55,6 +55,12 @@ class _EditScreenState extends State<EditScreen> {
   List<TextOverlay> _draftOverlays = [];
   double _previewWidth = 1;
 
+  /// Id of the caption selected via the timeline (first tap) — shown as a
+  /// draggable/resizable widget in the preview. Every other caption is
+  /// already burned into the compiled video itself, so only the selected
+  /// one is rendered here to avoid showing it twice.
+  String? _selectedCaptionId;
+
   String? _activeOverlayId;
   double _gestureStartFontSize = 0;
   double _gestureStartRotation = 0;
@@ -208,6 +214,7 @@ class _EditScreenState extends State<EditScreen> {
     );
     if (result == null || result.text.trim().isEmpty) return;
     await _handleFormResult(result);
+    setState(() => _selectedCaptionId = result.id);
   }
 
   Future<void> _editText(TextOverlay overlay) async {
@@ -223,11 +230,20 @@ class _EditScreenState extends State<EditScreen> {
         clipBoundarySeconds: [
           for (final s in starts) s.inMilliseconds / 1000,
         ],
-        onDelete: () => _activeReel.removeTextOverlay(overlay.id),
+        onDelete: () {
+          _activeReel.removeTextOverlay(overlay.id);
+          if (_selectedCaptionId == overlay.id) {
+            setState(() => _selectedCaptionId = null);
+          }
+        },
       ),
     );
     if (result == null) return;
     await _handleFormResult(result);
+  }
+
+  void _handleSelectCaption(String id) {
+    setState(() => _selectedCaptionId = id);
   }
 
   void _beginGesture(TextOverlay overlay) {
@@ -480,6 +496,8 @@ class _EditScreenState extends State<EditScreen> {
                   onReorderClip: (oldIndex, newIndex) =>
                       reel.reorder(oldIndex, newIndex),
                   onCommitClipTrim: _handleCommitClipTrim,
+                  selectedCaptionId: _selectedCaptionId,
+                  onSelectCaption: _handleSelectCaption,
                   onTapCaption: _editText,
                   onCommitCaptionTiming: _handleCommitCaptionTiming,
                   onAddText: _addText,
@@ -596,36 +614,16 @@ class _EditScreenState extends State<EditScreen> {
     );
   }
 
-  /// Shows each caption only while the preview's current position is
-  /// within its [TextOverlay.startSeconds]/[TextOverlay.endSeconds] window
-  /// — matching what the timeline's bar represents and what the exported
-  /// video will actually show — except the one currently being dragged,
-  /// which stays visible regardless so the gesture isn't interrupted.
+  /// Shows only the timeline-selected caption as a draggable/resizable
+  /// widget. Every other caption is already burned into the compiled
+  /// video itself, so rendering them here too would just duplicate them
+  /// on screen.
   Widget _buildOverlaysLayer(double previewWidth, double previewHeight) {
-    final controller = _previewController;
-    if (controller == null) {
-      return Stack(
-        children: [
-          for (final overlay in _draftOverlays)
-            _buildOverlayWidget(overlay, previewWidth, previewHeight),
-        ],
-      );
-    }
-    return ValueListenableBuilder<VideoPlayerValue>(
-      valueListenable: controller,
-      builder: (context, value, _) {
-        final seconds = value.position.inMilliseconds / 1000;
-        return Stack(
-          children: [
-            for (final overlay in _draftOverlays)
-              if (overlay.id == _activeOverlayId ||
-                  (seconds >= overlay.startSeconds &&
-                      seconds <= overlay.endSeconds))
-                _buildOverlayWidget(overlay, previewWidth, previewHeight),
-          ],
-        );
-      },
-    );
+    final overlay = _draftOverlays
+        .where((o) => o.id == _selectedCaptionId)
+        .firstOrNull;
+    if (overlay == null) return const SizedBox.shrink();
+    return _buildOverlayWidget(overlay, previewWidth, previewHeight);
   }
 
   Widget _buildOverlayWidget(
