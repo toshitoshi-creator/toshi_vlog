@@ -19,11 +19,17 @@ class CompiledPreviewSection extends StatefulWidget {
     required this.reel,
     required this.subscriptionService,
     required this.downloadQuota,
+    this.onPlayInline,
   });
 
   final HighlightReel reel;
   final SubscriptionService subscriptionService;
   final DownloadQuota downloadQuota;
+
+  /// When set, the play button triggers this instead of opening a
+  /// full-screen player — used by the 編集 tab, which already has its own
+  /// inline video preview to play from.
+  final VoidCallback? onPlayInline;
 
   @override
   State<CompiledPreviewSection> createState() =>
@@ -97,13 +103,16 @@ class _CompiledPreviewSectionState extends State<CompiledPreviewSection> {
       crossAxisAlignment: CrossAxisAlignment.stretch,
       children: [
         FilledButton.icon(
-          onPressed: () {
-            Navigator.of(context).push(
-              MaterialPageRoute(
-                builder: (_) => VideoPlayerScreen(file: file, title: 'まとめ動画'),
-              ),
-            );
-          },
+          onPressed:
+              widget.onPlayInline ??
+              () {
+                Navigator.of(context).push(
+                  MaterialPageRoute(
+                    builder: (_) =>
+                        VideoPlayerScreen(file: file, title: 'まとめ動画'),
+                  ),
+                );
+              },
           icon: const Icon(Icons.play_arrow),
           label: Text('まとめ動画を再生 (${reel.segments.length}クリップ)'),
         ),

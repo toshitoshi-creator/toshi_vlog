@@ -47,6 +47,8 @@ class _EditScreenState extends State<EditScreen> {
   VideoPlayerController? _previewController;
   int _previewRevision = -1;
   String? _previewError;
+  bool _isPreviewPlaying = false;
+  final _scrollController = ScrollController();
   List<TextOverlay> _draftOverlays = [];
   final Map<String, GlobalKey> _overlayKeys = {};
   double _previewWidth = 1;
@@ -73,8 +75,48 @@ class _EditScreenState extends State<EditScreen> {
   void dispose() {
     widget.compilationLibrary.removeListener(_onLibraryChanged);
     _activeReel.removeListener(_onReelChanged);
+    _previewController?.removeListener(_onPreviewControllerUpdate);
     _previewController?.dispose();
+    _scrollController.dispose();
     super.dispose();
+  }
+
+  void _onPreviewControllerUpdate() {
+    final controller = _previewController;
+    if (controller == null || !mounted) return;
+    final playing = controller.value.isPlaying;
+    if (playing != _isPreviewPlaying) {
+      setState(() => _isPreviewPlaying = playing);
+    }
+    if (!playing &&
+        controller.value.duration > Duration.zero &&
+        controller.value.position >= controller.value.duration) {
+      controller.seekTo(Duration.zero);
+    }
+  }
+
+  Future<void> _togglePlayback() async {
+    final controller = _previewController;
+    if (controller == null || !controller.value.isInitialized) return;
+    if (controller.value.isPlaying) {
+      await controller.pause();
+    } else {
+      await controller.play();
+    }
+  }
+
+  Future<void> _playFromStart() async {
+    final controller = _previewController;
+    if (controller == null || !controller.value.isInitialized) return;
+    if (_scrollController.hasClients) {
+      await _scrollController.animateTo(
+        0,
+        duration: const Duration(milliseconds: 300),
+        curve: Curves.easeOut,
+      );
+    }
+    await controller.seekTo(Duration.zero);
+    await controller.play();
   }
 
   void _onLibraryChanged() {
@@ -119,8 +161,10 @@ class _EditScreenState extends State<EditScreen> {
   Future<void> _loadPreview() async {
     final file = _activeReel.compiledFile;
     final oldController = _previewController;
+    oldController?.removeListener(_onPreviewControllerUpdate);
     _previewController = null;
     _previewError = null;
+    _isPreviewPlaying = false;
     _previewRevision = _activeReel.revision;
     await oldController?.dispose();
 
@@ -151,6 +195,7 @@ class _EditScreenState extends State<EditScreen> {
       await controller.dispose();
       return;
     }
+    controller.addListener(_onPreviewControllerUpdate);
     setState(() => _previewController = controller);
   }
 
@@ -424,6 +469,7 @@ class _EditScreenState extends State<EditScreen> {
       body: Stack(
         children: [
           ListView(
+            controller: _scrollController,
             children: [
               _buildCompilationPicker(),
               const Divider(height: 1),
@@ -444,6 +490,9 @@ class _EditScreenState extends State<EditScreen> {
                   reel: reel,
                   subscriptionService: widget.subscriptionService,
                   downloadQuota: widget.downloadQuota,
+                  onPlayInline: _previewController == null
+                      ? null
+                      : _playFromStart,
                 ),
               ),
               const Divider(height: 1),
@@ -600,6 +649,22 @@ class _EditScreenState extends State<EditScreen> {
                   ),
                 for (final overlay in _draftOverlays)
                   _buildOverlayWidget(overlay, _previewWidth, previewHeight),
+                if (controller != null && controller.value.isInitialized)
+                  Positioned(
+                    right: 12,
+                    bottom: 12,
+                    child: GestureDetector(
+                      onTap: _togglePlayback,
+                      child: CircleAvatar(
+                        radius: 22,
+                        backgroundColor: Colors.black54,
+                        child: Icon(
+                          _isPreviewPlaying ? Icons.pause : Icons.play_arrow,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
               ],
             ),
           );
