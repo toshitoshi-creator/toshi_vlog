@@ -1,13 +1,12 @@
 import 'dart:io';
 
 import 'package:flutter/material.dart';
-import 'package:gal/gal.dart';
 
 import '../models/download_quota.dart';
 import '../models/highlight_reel.dart';
 import '../models/subscription_service.dart';
-import '../screens/paywall_screen.dart';
 import '../screens/video_player_screen.dart';
+import '../utils/download_video.dart';
 
 /// Compiled-video preview (play button) and camera-roll download button for
 /// [reel], gated by [subscriptionService]/[downloadQuota]'s free-download
@@ -39,52 +38,15 @@ class CompiledPreviewSection extends StatefulWidget {
 class _CompiledPreviewSectionState extends State<CompiledPreviewSection> {
   bool _isDownloading = false;
 
-  void _openPaywall() {
-    Navigator.of(context).push(
-      MaterialPageRoute(
-        builder: (_) =>
-            PaywallScreen(subscriptionService: widget.subscriptionService),
-      ),
-    );
-  }
-
   Future<void> _handleDownload(File file) async {
-    final subscription = widget.subscriptionService;
-    final quota = widget.downloadQuota;
-    final canDownload =
-        subscription.isPremium || quota.remainingFreeDownloads > 0;
-    if (!canDownload) {
-      _openPaywall();
-      return;
-    }
-
     setState(() => _isDownloading = true);
-    try {
-      var hasAccess = await Gal.hasAccess();
-      if (!hasAccess) {
-        hasAccess = await Gal.requestAccess();
-      }
-      if (!hasAccess) {
-        _showSnackBar('写真ライブラリへのアクセスが許可されていません');
-        return;
-      }
-      await Gal.putVideo(file.path, album: 'ToshiVlog');
-      if (!subscription.isPremium) {
-        await quota.recordDownload();
-      }
-      _showSnackBar('カメラロールに保存しました');
-    } catch (_) {
-      _showSnackBar('保存に失敗しました');
-    } finally {
-      if (mounted) setState(() => _isDownloading = false);
-    }
-  }
-
-  void _showSnackBar(String message) {
-    if (!mounted) return;
-    ScaffoldMessenger.of(
-      context,
-    ).showSnackBar(SnackBar(content: Text(message)));
+    await downloadCompiledVideo(
+      context: context,
+      file: file,
+      subscriptionService: widget.subscriptionService,
+      downloadQuota: widget.downloadQuota,
+    );
+    if (mounted) setState(() => _isDownloading = false);
   }
 
   @override

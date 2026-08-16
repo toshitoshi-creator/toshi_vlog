@@ -26,6 +26,7 @@ class VideoEditorTimeline extends StatefulWidget {
     required this.onCommitClipTrim,
     required this.onTapCaption,
     required this.onCommitCaptionTiming,
+    required this.onAddText,
   });
 
   final HighlightReel reel;
@@ -45,6 +46,7 @@ class VideoEditorTimeline extends StatefulWidget {
   final ValueChanged<TextOverlay> onTapCaption;
   final void Function(TextOverlay overlay, double newStart, double newEnd)
   onCommitCaptionTiming;
+  final VoidCallback onAddText;
 
   @override
   State<VideoEditorTimeline> createState() => _VideoEditorTimelineState();
@@ -380,6 +382,12 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
                 onPressed: () => _zoom(1.4),
                 visualDensity: VisualDensity.compact,
               ),
+              IconButton(
+                icon: const Icon(Icons.add_box_outlined),
+                tooltip: 'テキストを追加',
+                onPressed: widget.onAddText,
+                visualDensity: VisualDensity.compact,
+              ),
             ],
           ),
         ),
@@ -391,31 +399,39 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
         else
           Padding(
             padding: const EdgeInsets.symmetric(horizontal: 16),
-            child: LayoutBuilder(
-              builder: (context, constraints) {
-                final contentWidth = _contentWidth(constraints.maxWidth);
-                return SingleChildScrollView(
-                  controller: _scrollController,
-                  scrollDirection: Axis.horizontal,
-                  child: SizedBox(
-                    width: contentWidth,
-                    height: trackHeight,
-                    child: Stack(
-                      children: [
-                        Column(
+            child: ConstrainedBox(
+              constraints: const BoxConstraints(maxHeight: 220),
+              // Vertical scroll as a safety net for many overlapping
+              // caption rows; horizontal scroll (below) is the primary
+              // interaction and is what most content needs.
+              child: SingleChildScrollView(
+                child: LayoutBuilder(
+                  builder: (context, constraints) {
+                    final contentWidth = _contentWidth(constraints.maxWidth);
+                    return SingleChildScrollView(
+                      controller: _scrollController,
+                      scrollDirection: Axis.horizontal,
+                      child: SizedBox(
+                        width: contentWidth,
+                        height: trackHeight,
+                        child: Stack(
                           children: [
-                            _buildRuler(contentWidth),
-                            _buildClipTrack(contentWidth),
-                            for (final row in rows)
-                              _buildCaptionRow(row, contentWidth),
+                            Column(
+                              children: [
+                                _buildRuler(contentWidth),
+                                _buildClipTrack(contentWidth),
+                                for (final row in rows)
+                                  _buildCaptionRow(row, contentWidth),
+                              ],
+                            ),
+                            _buildPlayhead(trackHeight),
                           ],
                         ),
-                        _buildPlayhead(trackHeight),
-                      ],
-                    ),
-                  ),
-                );
-              },
+                      ),
+                    );
+                  },
+                ),
+              ),
             ),
           ),
       ],
