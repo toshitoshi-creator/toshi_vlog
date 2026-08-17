@@ -386,13 +386,30 @@ class _CameraScreenState extends State<CameraScreen>
                 // the image to the full screen box, most noticeably in
                 // landscape. Center gives it the loose constraints it needs
                 // so it letterboxes instead of distorting.
-                child: Center(
-                  child: GestureDetector(
-                    onScaleStart: (_) => _baseZoom = _currentZoom,
-                    onScaleUpdate: (details) =>
-                        _setZoom(_baseZoom * details.scale),
-                    child: CameraPreview(controller),
-                  ),
+                //
+                // But controller.value.aspectRatio can briefly report 0 (or
+                // worse, NaN, since it's width/height under the hood) while
+                // AVCaptureSession reconfigures right as recording starts.
+                // Under tight constraints AspectRatio ignores the ratio
+                // entirely and is safe, but under Center's loose constraints
+                // it actually divides by it — a NaN size there can crash the
+                // renderer. Only switch to Center once the ratio is sane;
+                // otherwise fall back to the old tight-fill behavior for
+                // that frame.
+                child: Builder(
+                  builder: (context) {
+                    final aspectRatio = controller.value.aspectRatio;
+                    final preview = GestureDetector(
+                      onScaleStart: (_) => _baseZoom = _currentZoom,
+                      onScaleUpdate: (details) =>
+                          _setZoom(_baseZoom * details.scale),
+                      child: CameraPreview(controller),
+                    );
+                    if (!aspectRatio.isFinite || aspectRatio <= 0) {
+                      return preview;
+                    }
+                    return Center(child: preview);
+                  },
                 ),
               )
             else
