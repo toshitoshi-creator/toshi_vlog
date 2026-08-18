@@ -30,6 +30,7 @@ class VideoEditorTimeline extends StatefulWidget {
     required this.onCommitCaptionTiming,
     required this.onAddText,
     required this.onEditFraming,
+    required this.onDeselectAll,
   });
 
   final HighlightReel reel;
@@ -68,6 +69,11 @@ class VideoEditorTimeline extends StatefulWidget {
   /// fired by the toolbar's crop/rotate icon, enabled only when a clip is
   /// selected.
   final ValueChanged<int> onEditFraming;
+
+  /// Fired when tapping empty space in the timeline (not a clip block or
+  /// caption bar) — clears the caption selection the parent owns; clip
+  /// selection is cleared locally at the same time.
+  final VoidCallback onDeselectAll;
 
   @override
   State<VideoEditorTimeline> createState() => _VideoEditorTimelineState();
@@ -220,6 +226,20 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
     setState(() => _selectedClipSourceDuration = duration);
   }
 
+  /// Clears both clip and caption selection — fired when tapping empty
+  /// timeline space (not a clip block or caption bar).
+  void _deselectAll() {
+    if (_selectedClipIndex != null) {
+      setState(() {
+        _selectedClipIndex = null;
+        _selectedClipSourceDuration = null;
+      });
+    }
+    if (widget.selectedCaptionId != null) {
+      widget.onDeselectAll();
+    }
+  }
+
   void _beginClipTrim(int index, {required bool leftEdge}) {
     final segment = widget.segments[index];
     setState(() {
@@ -237,14 +257,14 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
     _accumulatedDeltaSeconds += deltaDx / _pixelsPerSecond;
     final deltaMs = (_accumulatedDeltaSeconds * 1000).round();
     const minDuration = Duration(milliseconds: 200);
-    final sourceMax =
-        _selectedClipSourceDuration ?? _gestureStartDuration;
+    final sourceMax = _selectedClipSourceDuration ?? _gestureStartDuration;
 
     Duration newOffset;
     Duration newDuration;
     if (_draggingClipLeftEdge == true) {
       final sourceEndMs =
-          _gestureStartOffset.inMilliseconds + _gestureStartDuration.inMilliseconds;
+          _gestureStartOffset.inMilliseconds +
+          _gestureStartDuration.inMilliseconds;
       var offsetMs = _gestureStartOffset.inMilliseconds + deltaMs;
       offsetMs = offsetMs.clamp(0, sourceEndMs - minDuration.inMilliseconds);
       newOffset = Duration(milliseconds: offsetMs);
@@ -323,8 +343,10 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
     var start = _gestureStartCaptionStart;
     var end = _gestureStartCaptionEnd;
     if (_draggingCaptionLeftEdge == true) {
-      start = (_gestureStartCaptionStart + deltaSeconds)
-          .clamp(0.0, _gestureStartCaptionEnd - minGap);
+      start = (_gestureStartCaptionStart + deltaSeconds).clamp(
+        0.0,
+        _gestureStartCaptionEnd - minGap,
+      );
     } else if (_draggingCaptionLeftEdge == false) {
       end = (_gestureStartCaptionEnd + deltaSeconds).clamp(
         _gestureStartCaptionStart + minGap,
@@ -403,10 +425,7 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
           padding: const EdgeInsets.symmetric(horizontal: 16),
           child: Row(
             children: [
-              Text(
-                'タイムライン',
-                style: Theme.of(context).textTheme.labelLarge,
-              ),
+              Text('タイムライン', style: Theme.of(context).textTheme.labelLarge),
               const Spacer(),
               IconButton(
                 icon: const Icon(Icons.zoom_out),
@@ -460,6 +479,15 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
                     height: trackHeight,
                     child: Stack(
                       children: [
+                        // Tapping empty space (not a clip block or caption
+                        // bar — those have their own GestureDetectors on
+                        // top of this and win the hit test) deselects.
+                        Positioned.fill(
+                          child: GestureDetector(
+                            behavior: HitTestBehavior.opaque,
+                            onTap: _deselectAll,
+                          ),
+                        ),
                         Column(
                           children: [
                             _buildRuler(contentWidth),
@@ -501,8 +529,7 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
       behavior: HitTestBehavior.opaque,
       onTapDown: (details) => _seekToDx(details.localPosition.dx),
       onHorizontalDragStart: (details) => _seekToDx(details.localPosition.dx),
-      onHorizontalDragUpdate: (details) =>
-          _seekToDx(details.localPosition.dx),
+      onHorizontalDragUpdate: (details) => _seekToDx(details.localPosition.dx),
       child: SizedBox(
         width: width,
         height: _rulerHeight,
@@ -529,10 +556,10 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
   Widget _buildClipBlock(int index, double left, double width) {
     final segment = widget.segments[index];
     final selected = _selectedClipIndex == index;
-    final isReordering = _draggingClipIndex == index &&
-        _draggingClipLeftEdge == null;
-    final isTrimming = _draggingClipIndex == index &&
-        _draggingClipLeftEdge != null;
+    final isReordering =
+        _draggingClipIndex == index && _draggingClipLeftEdge == null;
+    final isTrimming =
+        _draggingClipIndex == index && _draggingClipLeftEdge != null;
     final showInsertionMark =
         _reorderTargetIndex == index && _draggingClipIndex != index;
 

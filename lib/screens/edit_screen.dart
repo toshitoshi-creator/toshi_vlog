@@ -353,6 +353,11 @@ class _EditScreenState extends State<EditScreen> {
     setState(() => _selectedCaptionId = id);
   }
 
+  void _handleDeselectAll() {
+    if (_selectedCaptionId == null) return;
+    setState(() => _selectedCaptionId = null);
+  }
+
   /// Caps a caption-editing sheet's height to roughly the bottom half of
   /// the screen, so the video preview above stays visible while editing
   /// instead of being covered by a near-full-screen sheet.
@@ -644,6 +649,7 @@ class _EditScreenState extends State<EditScreen> {
                   onCommitCaptionTiming: _handleCommitCaptionTiming,
                   onAddText: _handleAddTextPressed,
                   onEditFraming: _handleEditFraming,
+                  onDeselectAll: _handleDeselectAll,
                 ),
                 const SizedBox(height: 8),
               ],
