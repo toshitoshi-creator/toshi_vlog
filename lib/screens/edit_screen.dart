@@ -121,7 +121,7 @@ class _EditScreenState extends State<EditScreen> {
     if (!mounted) return;
     _syncFromReel();
     if (_activeReel.revision != _previewRevision) {
-      _loadPreview();
+      _loadPreview(preservePosition: true);
     }
     setState(() {});
   }
@@ -148,9 +148,19 @@ class _EditScreenState extends State<EditScreen> {
     await _loadPreview();
   }
 
-  Future<void> _loadPreview() async {
+  /// Reloads the preview from [_activeReel.compiledFile]. When
+  /// [preservePosition] is true (recomposes of the *same* compilation —
+  /// e.g. after editing a caption), the current playback position and
+  /// playing state carry over instead of resetting to the start; switching
+  /// to a different compilation always starts fresh.
+  Future<void> _loadPreview({bool preservePosition = false}) async {
     final file = _activeReel.compiledFile;
     final oldController = _previewController;
+    final resumePosition = preservePosition
+        ? oldController?.value.position
+        : null;
+    final wasPlaying =
+        preservePosition && (oldController?.value.isPlaying ?? false);
     oldController?.removeListener(_onPreviewControllerUpdate);
     _previewController = null;
     _previewError = null;
@@ -165,7 +175,17 @@ class _EditScreenState extends State<EditScreen> {
     final controller = VideoPlayerController.file(file);
     try {
       await controller.initialize();
-      await controller.pause();
+      if (resumePosition != null && resumePosition > Duration.zero) {
+        final duration = controller.value.duration;
+        await controller.seekTo(
+          resumePosition < duration ? resumePosition : duration,
+        );
+      }
+      if (wasPlaying) {
+        await controller.play();
+      } else {
+        await controller.pause();
+      }
     } catch (e) {
       if (mounted) setState(() => _previewError = 'プレビューを読み込めませんでした: $e');
       return;
@@ -248,6 +268,7 @@ class _EditScreenState extends State<EditScreen> {
     final text = await showModalBottomSheet<String>(
       context: context,
       isScrollControlled: true,
+      constraints: _bottomHalfConstraints(context),
       builder: (context) => DateTemplateSheet(dateTime: segment.createdAt),
     );
     if (text == null || text.trim().isEmpty) return;
@@ -281,6 +302,7 @@ class _EditScreenState extends State<EditScreen> {
     final result = await showModalBottomSheet<TextOverlay>(
       context: context,
       isScrollControlled: true,
+      constraints: _bottomHalfConstraints(context),
       builder: (context) => TextOverlayFormSheet(
         initial: TextOverlay(
           id: DateTime.now().microsecondsSinceEpoch.toString(),
@@ -295,9 +317,7 @@ class _EditScreenState extends State<EditScreen> {
           endSeconds: totalSeconds,
         ),
         totalSeconds: totalSeconds,
-        clipBoundarySeconds: [
-          for (final s in starts) s.inMilliseconds / 1000,
-        ],
+        clipBoundarySeconds: [for (final s in starts) s.inMilliseconds / 1000],
       ),
     );
     if (result == null || result.text.trim().isEmpty) return;
@@ -312,12 +332,11 @@ class _EditScreenState extends State<EditScreen> {
     final result = await showModalBottomSheet<TextOverlay>(
       context: context,
       isScrollControlled: true,
+      constraints: _bottomHalfConstraints(context),
       builder: (context) => TextOverlayFormSheet(
         initial: overlay,
         totalSeconds: totalSeconds,
-        clipBoundarySeconds: [
-          for (final s in starts) s.inMilliseconds / 1000,
-        ],
+        clipBoundarySeconds: [for (final s in starts) s.inMilliseconds / 1000],
         onDelete: () {
           _activeReel.removeTextOverlay(overlay.id);
           if (_selectedCaptionId == overlay.id) {
@@ -332,6 +351,13 @@ class _EditScreenState extends State<EditScreen> {
 
   void _handleSelectCaption(String id) {
     setState(() => _selectedCaptionId = id);
+  }
+
+  /// Caps a caption-editing sheet's height to roughly the bottom half of
+  /// the screen, so the video preview above stays visible while editing
+  /// instead of being covered by a near-full-screen sheet.
+  BoxConstraints _bottomHalfConstraints(BuildContext context) {
+    return BoxConstraints(maxHeight: MediaQuery.of(context).size.height * 0.5);
   }
 
   Future<void> _handleEditFraming(int index) async {
@@ -364,17 +390,17 @@ class _EditScreenState extends State<EditScreen> {
     // previewHeight = previewWidth * (canvasHeight / canvasWidth), so the
     // normalized delta is dy / previewHeight, i.e. dy / previewWidth scaled
     // by (canvasWidth / canvasHeight) — not its reciprocal.
-    _liveY = (_liveY +
-            details.focalPointDelta.dy /
-                _previewWidth *
-                (HighlightReel.canvasWidth / HighlightReel.canvasHeight))
-        .clamp(0.0, 1.0);
+    _liveY =
+        (_liveY +
+                details.focalPointDelta.dy /
+                    _previewWidth *
+                    (HighlightReel.canvasWidth / HighlightReel.canvasHeight))
+            .clamp(0.0, 1.0);
     final newFontSize = (_gestureStartFontSize * details.scale).clamp(
       12.0,
       400.0,
     );
-    final newRotation =
-        _gestureStartRotation + details.rotation * 180 / pi;
+    final newRotation = _gestureStartRotation + details.rotation * 180 / pi;
 
     setState(() {
       _draftOverlays = [
