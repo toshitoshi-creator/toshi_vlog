@@ -108,11 +108,59 @@ class _HighlightScreenState extends State<HighlightScreen> {
     await _handleFormResult(result);
   }
 
+  /// Overwrites the 編集 tab's independent project with a fresh copy of
+  /// this one. One-directional by design — there's no equivalent button
+  /// on the 編集 tab side to copy back.
+  Future<void> _copyToEditTab() async {
+    final reel = widget.compilationLibrary.current;
+    if (reel.segments.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('先にクリップを追加してください')));
+      return;
+    }
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('編集タブにコピーしますか?'),
+        content: const Text(
+          '簡易編集の内容(動画・コメントなど)を編集タブにコピーします。'
+          '編集タブの現在の内容は上書きされます。この操作は取り消せません。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('コピー'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true || !mounted) return;
+    await reel.cloneInto(widget.compilationLibrary.currentEdit);
+    if (!mounted) return;
+    ScaffoldMessenger.of(
+      context,
+    ).showSnackBar(const SnackBar(content: Text('編集タブにコピーしました')));
+  }
+
   @override
   Widget build(BuildContext context) {
     final reel = widget.compilationLibrary.current;
     return Scaffold(
-      appBar: AppBar(title: const Text('まとめ動画')),
+      appBar: AppBar(
+        title: const Text('簡易編集'),
+        actions: [
+          IconButton(
+            icon: const Icon(Icons.arrow_circle_right_outlined),
+            tooltip: '編集タブにコピー',
+            onPressed: _copyToEditTab,
+          ),
+        ],
+      ),
       body: ListView(
         children: [
           if (reel.errorMessage != null)

@@ -5,7 +5,7 @@ import 'package:flutter_test/flutter_test.dart';
 import 'package:toshi_vlog/main.dart';
 
 void main() {
-  testWidgets('shows camera, highlights, edit, and media tabs', (
+  testWidgets('shows camera, simple edit, edit, and media tabs', (
     WidgetTester tester,
   ) async {
     // The default test surface is landscape-shaped (800x600); use a
@@ -20,7 +20,7 @@ void main() {
     await tester.pump();
 
     expect(find.text('カメラ'), findsOneWidget);
-    expect(find.text('まとめ'), findsOneWidget);
+    expect(find.text('簡易編集'), findsOneWidget);
     expect(find.text('編集'), findsOneWidget);
     expect(find.text('メディア'), findsOneWidget);
   });

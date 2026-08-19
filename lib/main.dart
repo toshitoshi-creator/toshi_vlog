@@ -110,8 +110,9 @@ class _RootScreenState extends State<RootScreen> {
                 child: FloatingActionButton.small(
                   heroTag: 'nav-toggle',
                   tooltip: showNavBar ? 'タブを隠す' : 'タブを表示',
-                  onPressed: () =>
-                      setState(() => _showNavInLandscape = !_showNavInLandscape),
+                  onPressed: () => setState(
+                    () => _showNavInLandscape = !_showNavInLandscape,
+                  ),
                   child: Icon(showNavBar ? Icons.expand_more : Icons.apps),
                 ),
               ),
@@ -128,10 +129,13 @@ class _RootScreenState extends State<RootScreen> {
                 });
               },
               destinations: const [
-                NavigationDestination(icon: Icon(Icons.camera_alt), label: 'カメラ'),
+                NavigationDestination(
+                  icon: Icon(Icons.camera_alt),
+                  label: 'カメラ',
+                ),
                 NavigationDestination(
                   icon: Icon(Icons.movie_creation_outlined),
-                  label: 'まとめ',
+                  label: '簡易編集',
                 ),
                 NavigationDestination(icon: Icon(Icons.edit), label: '編集'),
                 NavigationDestination(
