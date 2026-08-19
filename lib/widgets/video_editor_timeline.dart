@@ -164,6 +164,39 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
     return needed > minWidth ? needed : minWidth;
   }
 
+  /// Cumulative clip boundaries in seconds (0, each clip's end, ...,
+  /// total), used to snap a caption's dragged start/end to a nearby clip
+  /// edge — a light bit of editing support so lining a caption up with a
+  /// cut doesn't require a pixel-perfect drag.
+  List<double> _clipBoundarySeconds() {
+    final boundaries = <double>[0];
+    var cursor = 0.0;
+    for (final duration in _effectiveDurations()) {
+      cursor += duration.inMilliseconds / 1000;
+      boundaries.add(cursor);
+    }
+    return boundaries;
+  }
+
+  /// Snaps [seconds] to the nearest clip boundary if it's within a small
+  /// on-screen distance (scaled by zoom so the snap always feels the same
+  /// regardless of how zoomed in the timeline is), otherwise returns it
+  /// unchanged.
+  double _snapToClipBoundary(double seconds) {
+    const snapPixels = 10.0;
+    final thresholdSeconds = snapPixels / _pixelsPerSecond;
+    var snapped = seconds;
+    var closestDelta = thresholdSeconds;
+    for (final boundary in _clipBoundarySeconds()) {
+      final delta = (boundary - seconds).abs();
+      if (delta <= closestDelta) {
+        snapped = boundary;
+        closestDelta = delta;
+      }
+    }
+    return snapped;
+  }
+
   // ---- Clip reorder (long-press + drag the block body) ----
 
   void _beginClipReorder(int index) {
@@ -347,11 +380,13 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
         0.0,
         _gestureStartCaptionEnd - minGap,
       );
+      start = _snapToClipBoundary(start).clamp(0.0, end - minGap);
     } else if (_draggingCaptionLeftEdge == false) {
       end = (_gestureStartCaptionEnd + deltaSeconds).clamp(
         _gestureStartCaptionStart + minGap,
         _totalSeconds,
       );
+      end = _snapToClipBoundary(end).clamp(start + minGap, _totalSeconds);
     } else {
       final duration = _gestureStartCaptionEnd - _gestureStartCaptionStart;
       final shift = deltaSeconds.clamp(
@@ -360,6 +395,19 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
       );
       start = _gestureStartCaptionStart + shift;
       end = start + duration;
+      // Snap whichever edge lands closest to a clip boundary, shifting
+      // the other edge along with it to keep the caption's duration fixed.
+      final startSnapDelta = (_snapToClipBoundary(start) - start).abs();
+      final endSnapDelta = (_snapToClipBoundary(end) - end).abs();
+      if (startSnapDelta > 0 && startSnapDelta <= endSnapDelta) {
+        final snapped = _snapToClipBoundary(start);
+        end += snapped - start;
+        start = snapped;
+      } else if (endSnapDelta > 0) {
+        final snapped = _snapToClipBoundary(end);
+        start += snapped - end;
+        end = snapped;
+      }
     }
     setState(() {
       _liveCaptionStart = start;
