@@ -7,13 +7,18 @@ import 'package:path_provider/path_provider.dart';
 import 'highlight_reel.dart';
 import 'saved_compilation.dart';
 
-/// Owns the always-existing "currently being built" [HighlightReel]
-/// (`id == 'current'`) plus any number of saved snapshots the user chose to
-/// keep. Saved snapshots are deep copies (see [HighlightReel.cloneInto]),
-/// so editing one afterwards never affects `current` or any other saved
-/// compilation.
+/// Owns the always-existing "currently being built" [HighlightReel]s —
+/// [current] for the まとめ tab's 簡易編集 and [currentEdit] for the 編集
+/// tab — plus any number of saved snapshots the user chose to keep. The
+/// two tabs' "current" projects are entirely independent (clips, captions,
+/// BGM, everything): [currentEdit] is seeded with a one-time clone of
+/// [current] the first time it's ever loaded (so 編集 doesn't start out
+/// empty), but never resynced after that. Saved snapshots are likewise
+/// deep copies (see [HighlightReel.cloneInto]), so editing one afterwards
+/// never affects either "current" reel or any other saved compilation.
 class CompilationLibrary extends ChangeNotifier {
   final HighlightReel current = HighlightReel(id: 'current');
+  final HighlightReel currentEdit = HighlightReel(id: 'current_edit');
 
   List<SavedCompilation> _saved = [];
   final Map<String, HighlightReel> _loadedReels = {};
@@ -31,6 +36,15 @@ class CompilationLibrary extends ChangeNotifier {
 
   Future<void> load() async {
     await current.load();
+
+    final documentsDir = await getApplicationDocumentsDirectory();
+    final editDir = Directory('${documentsDir.path}/compilations/current_edit');
+    final isFirstEditLoad = !await editDir.exists();
+    await currentEdit.load();
+    if (isFirstEditLoad && current.segments.isNotEmpty) {
+      await current.cloneInto(currentEdit);
+    }
+
     final index = await _indexFile();
     if (await index.exists()) {
       try {
@@ -64,12 +78,17 @@ class CompilationLibrary extends ChangeNotifier {
     return reel;
   }
 
-  /// Deep-copies [current]'s state into a brand-new saved compilation and
-  /// adds it to [saved]. Returns the new entry's metadata.
-  Future<SavedCompilation> saveCurrentAsNew({String? title}) async {
+  /// Deep-copies [source]'s state into a brand-new saved compilation and
+  /// adds it to [saved]. Returns the new entry's metadata. [source] is
+  /// whichever reel the caller is actually looking at — [current],
+  /// [currentEdit], or an already-saved one being viewed — not assumed.
+  Future<SavedCompilation> saveAsNew(
+    HighlightReel source, {
+    String? title,
+  }) async {
     final id = DateTime.now().microsecondsSinceEpoch.toString();
     final reel = HighlightReel(id: id);
-    await current.cloneInto(reel);
+    await source.cloneInto(reel);
     _loadedReels[id] = reel;
 
     final entry = SavedCompilation(
@@ -108,6 +127,7 @@ class CompilationLibrary extends ChangeNotifier {
   @override
   void dispose() {
     current.dispose();
+    currentEdit.dispose();
     for (final reel in _loadedReels.values) {
       reel.dispose();
     }

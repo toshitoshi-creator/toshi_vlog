@@ -13,9 +13,9 @@ String formatSeconds(double seconds) {
 
 /// Modal bottom sheet for adding/editing a caption's text, font, size,
 /// color, and position. Shared by the まとめ tab (簡易編集: add and manage
-/// captions from a plain list) and the 編集 tab (its timeline opens this
-/// for font/color/size changes; position/rotation are also adjustable
-/// directly on the 編集 tab's canvas, and timing via the timeline's drag
+/// captions from a plain list, timing set via a clip picker) and the 編集
+/// タブ (position/rotation are also adjustable directly on its canvas, and
+/// timing via either this form's seconds slider or the timeline's drag
 /// handles).
 ///
 /// Pops with the updated [TextOverlay] on save, or with no result if
@@ -29,6 +29,7 @@ class TextOverlayFormSheet extends StatefulWidget {
     required this.totalSeconds,
     required this.clipBoundarySeconds,
     this.showClipPicker = false,
+    this.showSecondsSlider = false,
     this.onDelete,
   });
 
@@ -41,10 +42,14 @@ class TextOverlayFormSheet extends StatefulWidget {
   final List<double> clipBoundarySeconds;
 
   /// Shows a simple "which clip(s) should this caption appear on" checkbox
-  /// picker built from [clipBoundarySeconds], used by the まとめ tab's
-  /// 簡易編集 (which has no visual timeline to drag timing on). The 編集
-  /// tab leaves this off and sets timing via its timeline instead.
+  /// picker built from [clipBoundarySeconds] — used by the まとめ tab's
+  /// 簡易編集, which has no visual timeline to drag timing on.
   final bool showClipPicker;
+
+  /// Shows a numeric start/end seconds RangeSlider — used by the 編集 tab,
+  /// which also has its timeline's drag handles as a second way to adjust
+  /// timing.
+  final bool showSecondsSlider;
 
   final VoidCallback? onDelete;
 
@@ -431,6 +436,37 @@ class _TextOverlayFormSheetState extends State<TextOverlayFormSheet> {
                     onChanged: (_) => _toggleClip(i),
                   ),
               ],
+              if (widget.showSecondsSlider) ...[
+                const SizedBox(height: 16),
+                Row(
+                  mainAxisAlignment: MainAxisAlignment.spaceBetween,
+                  children: [
+                    Text(
+                      '表示するタイミング',
+                      style: Theme.of(context).textTheme.labelLarge,
+                    ),
+                    Text(
+                      '${formatSeconds(_startSeconds)} 〜 ${formatSeconds(_endSeconds)}',
+                      style: Theme.of(context).textTheme.bodyMedium,
+                    ),
+                  ],
+                ),
+                _TimelineTicks(
+                  totalSeconds: widget.totalSeconds,
+                  boundarySeconds: widget.clipBoundarySeconds,
+                ),
+                RangeSlider(
+                  values: RangeValues(_startSeconds, _endSeconds),
+                  min: 0,
+                  max: widget.totalSeconds > 0 ? widget.totalSeconds : 1,
+                  onChanged: widget.totalSeconds <= 0
+                      ? null
+                      : (values) => setState(() {
+                          _startSeconds = values.start;
+                          _endSeconds = values.end;
+                        }),
+                ),
+              ],
               const SizedBox(height: 24),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -446,6 +482,53 @@ class _TextOverlayFormSheetState extends State<TextOverlayFormSheet> {
             ],
           ),
         ),
+      ),
+    );
+  }
+}
+
+/// Thin vertical tick marks at each clip boundary, roughly aligned above a
+/// [RangeSlider]'s track (Material centers the track within the slider's
+/// full width, inset by its thumb radius on each side).
+class _TimelineTicks extends StatelessWidget {
+  const _TimelineTicks({
+    required this.totalSeconds,
+    required this.boundarySeconds,
+  });
+
+  final double totalSeconds;
+  final List<double> boundarySeconds;
+
+  static const _horizontalInset = 16.0;
+
+  @override
+  Widget build(BuildContext context) {
+    if (totalSeconds <= 0) return const SizedBox(height: 12);
+    return SizedBox(
+      height: 12,
+      child: LayoutBuilder(
+        builder: (context, constraints) {
+          final trackWidth = (constraints.maxWidth - _horizontalInset * 2)
+              .clamp(0.0, double.infinity);
+          return Stack(
+            children: [
+              for (final boundary in boundarySeconds)
+                if (boundary > 0 && boundary < totalSeconds)
+                  Positioned(
+                    left:
+                        _horizontalInset +
+                        (boundary / totalSeconds) * trackWidth -
+                        0.5,
+                    top: 0,
+                    child: Container(
+                      width: 1,
+                      height: 10,
+                      color: Theme.of(context).colorScheme.outlineVariant,
+                    ),
+                  ),
+            ],
+          );
+        },
       ),
     );
   }

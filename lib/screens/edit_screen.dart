@@ -73,7 +73,7 @@ class _EditScreenState extends State<EditScreen> {
   @override
   void initState() {
     super.initState();
-    _activeReel = widget.compilationLibrary.current;
+    _activeReel = widget.compilationLibrary.currentEdit;
     widget.compilationLibrary.addListener(_onLibraryChanged);
     _activeReel.addListener(_onReelChanged);
     _syncFromReel();
@@ -136,7 +136,12 @@ class _EditScreenState extends State<EditScreen> {
       _selectedId = id;
       _loadingSelection = true;
     });
-    final reel = await widget.compilationLibrary.reelFor(id);
+    // 'current' means 編集's own always-existing project (currentEdit),
+    // independent of the まとめ tab's current — not compilationLibrary's
+    // shared 'current' reel.
+    final reel = id == 'current'
+        ? widget.compilationLibrary.currentEdit
+        : await widget.compilationLibrary.reelFor(id);
     if (!mounted) return;
     _activeReel.removeListener(_onReelChanged);
     reel.addListener(_onReelChanged);
@@ -320,6 +325,7 @@ class _EditScreenState extends State<EditScreen> {
         ),
         totalSeconds: totalSeconds,
         clipBoundarySeconds: [for (final s in starts) s.inMilliseconds / 1000],
+        showSecondsSlider: true,
       ),
     );
     if (result == null || result.text.trim().isEmpty) return;
@@ -339,6 +345,7 @@ class _EditScreenState extends State<EditScreen> {
         initial: overlay,
         totalSeconds: totalSeconds,
         clipBoundarySeconds: [for (final s in starts) s.inMilliseconds / 1000],
+        showSecondsSlider: true,
         onDelete: () {
           _activeReel.removeTextOverlay(overlay.id);
           if (_selectedCaptionId == overlay.id) {
@@ -467,7 +474,8 @@ class _EditScreenState extends State<EditScreen> {
       confirmLabel: '保存',
     );
     if (title == null) return;
-    final entry = await widget.compilationLibrary.saveCurrentAsNew(
+    final entry = await widget.compilationLibrary.saveAsNew(
+      _activeReel,
       title: title.isEmpty ? null : title,
     );
     if (!mounted) return;
@@ -681,7 +689,7 @@ class _EditScreenState extends State<EditScreen> {
               child: Row(
                 children: [
                   ChoiceChip(
-                    label: const Text('作成中のまとめ'),
+                    label: const Text('編集用のまとめ'),
                     selected: _selectedId == 'current',
                     onSelected: (_) => _selectCompilation('current'),
                   ),
