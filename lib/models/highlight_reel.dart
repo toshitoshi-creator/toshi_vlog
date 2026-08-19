@@ -746,6 +746,23 @@ class HighlightReel extends ChangeNotifier {
   Future<Duration> sourceDurationFor(HighlightSegment segment) =>
       _probeDuration(File(segment.sourcePath));
 
+  /// Rebuilds [compiledFile]/[previewFile] from this reel's own current
+  /// segments/captions/BGM, even though nothing has logically changed. Used
+  /// as a startup migration fixup (see [CompilationLibrary.load]) for
+  /// installs from before 簡易編集 and 編集 had separate projects — their
+  /// compiled video kept the same on-disk path across that split, so
+  /// without this it could otherwise keep serving whatever was last
+  /// compiled back when both tabs still shared one reel. Best-effort: a
+  /// failure here is swallowed rather than blocking app startup on it.
+  Future<void> forceRecompose() async {
+    try {
+      await _recompose();
+    } catch (_) {
+      // Leave whatever was already compiled in place.
+    }
+    notifyListeners();
+  }
+
   /// Trims segment [index]'s current window from its source with no framing
   /// applied, as a clean baseline for the framing editor's live preview —
   /// so a Flutter-side Transform can show the chosen rotation/scale

@@ -45,6 +45,22 @@ class CompilationLibrary extends ChangeNotifier {
       await current.cloneInto(currentEdit);
     }
 
+    // One-time fixup for installs from before 簡易編集/編集 had separate
+    // projects: current's compiled video kept its fixed on-disk path
+    // across that split, so it could otherwise keep serving whatever was
+    // last compiled back when 編集's edits still landed in the same reel.
+    // Forcing one recompose each guarantees they reflect their own
+    // (correctly separate) data going forward; the marker file makes sure
+    // this only ever runs once per install.
+    final migrationMarker = File(
+      '${documentsDir.path}/compilations/recompose_migrated',
+    );
+    if (!await migrationMarker.exists()) {
+      await current.forceRecompose();
+      await currentEdit.forceRecompose();
+      await migrationMarker.create(recursive: true);
+    }
+
     final index = await _indexFile();
     if (await index.exists()) {
       try {
