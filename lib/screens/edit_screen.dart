@@ -1,3 +1,4 @@
+import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
@@ -483,9 +484,28 @@ class _EditScreenState extends State<EditScreen> {
   }
 
   Future<void> _handleDownload() async {
-    final file = _activeReel.compiledFile;
-    if (file == null) return;
+    final compiled = _activeReel.compiledFile;
+    if (compiled == null) return;
     setState(() => _isDownloading = true);
+
+    // Non-premium downloads from the 編集 tab get an "AOK Craft" watermark
+    // burned in — subscribing or unlocking via invite code (both covered by
+    // isPremium) removes it. まとめ/簡易編集's downloads are unaffected.
+    File file = compiled;
+    if (!widget.subscriptionService.isPremium) {
+      try {
+        file = await _activeReel.buildWatermarkedCopy() ?? compiled;
+      } catch (_) {
+        if (!mounted) return;
+        setState(() => _isDownloading = false);
+        ScaffoldMessenger.of(
+          context,
+        ).showSnackBar(const SnackBar(content: Text('動画の書き出しに失敗しました')));
+        return;
+      }
+    }
+
+    if (!mounted) return;
     await downloadCompiledVideo(
       context: context,
       file: file,

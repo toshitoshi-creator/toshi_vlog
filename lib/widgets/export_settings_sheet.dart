@@ -27,12 +27,14 @@ class ExportSettingsSheet extends StatefulWidget {
 class _ExportSettingsSheetState extends State<ExportSettingsSheet> {
   late double _videoVolume;
   late double _bgmVolume;
+  late List<double> _segmentVolumes;
 
   @override
   void initState() {
     super.initState();
     _videoVolume = widget.reel.videoVolume;
     _bgmVolume = widget.reel.bgmVolume;
+    _segmentVolumes = [for (final s in widget.reel.segments) s.volume];
   }
 
   Future<void> _openPaywall() async {
@@ -131,7 +133,7 @@ class _ExportSettingsSheetState extends State<ExportSettingsSheet> {
                   reel.canIncludeOpening
                       ? '各クリップの中央1秒間をつなげて動画の先頭に追加します'
                       : 'クリップが${HighlightReel.minClipsForOpening}本以上になると設定できます'
-                          '(現在${reel.segments.length}本)',
+                            '(現在${reel.segments.length}本)',
                 ),
                 value: reel.includeOpening,
                 onChanged: reel.canIncludeOpening
@@ -170,6 +172,34 @@ class _ExportSettingsSheetState extends State<ExportSettingsSheet> {
                 onChanged: (v) => setState(() => _bgmVolume = v),
                 onChangeEnd: (v) => reel.setVolumes(bgmVolume: v),
               ),
+              if (reel.segments.isNotEmpty) ...[
+                const Divider(height: 32),
+                Text(
+                  'クリップごとの音量',
+                  style: Theme.of(context).textTheme.titleSmall,
+                ),
+                Text(
+                  '「動画の音量」に加えて、クリップ単体の音量も個別に調整できます',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                for (var i = 0; i < reel.segments.length; i++) ...[
+                  Row(
+                    children: [
+                      Text('クリップ${i + 1}'),
+                      const Spacer(),
+                      Text('${(_segmentVolumes[i] * 100).round()}%'),
+                    ],
+                  ),
+                  Slider(
+                    value: _segmentVolumes[i],
+                    min: 0,
+                    max: 2,
+                    divisions: 40,
+                    onChanged: (v) => setState(() => _segmentVolumes[i] = v),
+                    onChangeEnd: (v) => reel.setSegmentVolume(i, v),
+                  ),
+                ],
+              ],
               const SizedBox(height: 8),
               Align(
                 alignment: Alignment.centerRight,

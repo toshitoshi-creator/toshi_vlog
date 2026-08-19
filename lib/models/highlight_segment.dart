@@ -11,6 +11,7 @@ class HighlightSegment {
     this.redoCount = 0,
     this.frameRotationDegrees = 0,
     this.frameScale = 1,
+    this.volume = 1,
   });
 
   final String id;
@@ -36,6 +37,12 @@ class HighlightSegment {
   final double frameRotationDegrees;
   final double frameScale;
 
+  /// This clip's own audio volume (0 = silent, 1 = original level, can go
+  /// higher), mixed in independently of every other clip and of
+  /// [HighlightReel.videoVolume] (which still applies as an overall
+  /// multiplier on top).
+  final double volume;
+
   HighlightSegment copyWith({
     File? file,
     Duration? startOffset,
@@ -43,6 +50,7 @@ class HighlightSegment {
     int? redoCount,
     double? frameRotationDegrees,
     double? frameScale,
+    double? volume,
   }) => HighlightSegment(
     id: id,
     file: file ?? this.file,
@@ -53,6 +61,7 @@ class HighlightSegment {
     redoCount: redoCount ?? this.redoCount,
     frameRotationDegrees: frameRotationDegrees ?? this.frameRotationDegrees,
     frameScale: frameScale ?? this.frameScale,
+    volume: volume ?? this.volume,
   );
 
   Map<String, dynamic> toJson() => {
@@ -65,6 +74,7 @@ class HighlightSegment {
     'redoCount': redoCount,
     'frameRotationDegrees': frameRotationDegrees,
     'frameScale': frameScale,
+    'volume': volume,
   };
 
   factory HighlightSegment.fromJson(Map<String, dynamic> json) {
@@ -79,6 +89,7 @@ class HighlightSegment {
       frameRotationDegrees:
           (json['frameRotationDegrees'] as num?)?.toDouble() ?? 0,
       frameScale: (json['frameScale'] as num?)?.toDouble() ?? 1,
+      volume: (json['volume'] as num?)?.toDouble() ?? 1,
     );
   }
 }

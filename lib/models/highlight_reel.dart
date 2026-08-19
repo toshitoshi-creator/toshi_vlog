@@ -8,6 +8,7 @@ import 'package:ffmpeg_kit_flutter_new/return_code.dart';
 import 'package:flutter/foundation.dart';
 import 'package:path_provider/path_provider.dart';
 
+import '../utils/watermark_renderer.dart';
 import 'clip_trim_mode.dart';
 import 'export_settings.dart';
 import 'highlight_segment.dart';
@@ -545,6 +546,17 @@ class HighlightReel extends ChangeNotifier {
     await _recompose();
   }, 'まとめ動画の並び替えに失敗しました');
 
+  /// Sets clip [index]'s own audio volume (0 = silent, 1 = original level,
+  /// can go higher), independent of every other clip and of the overall
+  /// [videoVolume] multiplier.
+  Future<void> setSegmentVolume(int index, double volume) => _guarded(() async {
+    final updated = [..._segments];
+    updated[index] = updated[index].copyWith(volume: volume);
+    _segments = updated;
+    await _persistManifest();
+    await _recompose();
+  }, 'クリップの音量設定に失敗しました');
+
   Future<void> removeAt(int index) => _guarded(() async {
     final updated = [..._segments];
     final removed = updated.removeAt(index);
@@ -747,6 +759,57 @@ class HighlightReel extends ChangeNotifier {
     return output;
   }
 
+  /// Builds a one-off copy of [compiledFile] with the "AOK Craft" watermark
+  /// burned in at the center and bottom-right, for the 編集 tab's download
+  /// flow to use when the downloader isn't premium. Returns null if there's
+  /// nothing compiled yet. Not cached — callers just discard the result
+  /// after downloading it.
+  Future<File?> buildWatermarkedCopy() async {
+    final source = _compiledFile;
+    if (source == null) return null;
+
+    final highlightsDir = await _highlightsDirectory();
+    final watermark = await renderWatermarkPng();
+
+    const cornerMargin = 24;
+    final centerX = (canvasWidth - watermark.width) ~/ 2;
+    final centerY = (canvasHeight - watermark.height) ~/ 2;
+    final cornerX = canvasWidth - watermark.width - cornerMargin;
+    final cornerY = canvasHeight - watermark.height - cornerMargin;
+
+    final output = File('${highlightsDir.path}/watermarked.mp4');
+    if (await output.exists()) {
+      await output.delete();
+    }
+    final session = await FFmpegKit.executeWithArguments([
+      '-y',
+      '-i',
+      source.path,
+      '-i',
+      watermark.file.path,
+      '-filter_complex',
+      '[0:v][1:v]overlay=x=$centerX:y=$centerY[tmp];'
+          '[tmp][1:v]overlay=x=$cornerX:y=$cornerY,format=yuv420p[outv]',
+      '-map',
+      '[outv]',
+      '-map',
+      '0:a?',
+      '-c:v',
+      'libx264',
+      '-pix_fmt',
+      'yuv420p',
+      '-preset',
+      'veryfast',
+      '-c:a',
+      'copy',
+      output.path,
+    ]);
+    if (!ReturnCode.isSuccess(await session.getReturnCode())) {
+      throw Exception('ffmpeg watermark failed');
+    }
+    return output;
+  }
+
   Future<void> _recompose() async {
     final output = await _compiledOutputFile();
 
@@ -761,10 +824,48 @@ class HighlightReel extends ChangeNotifier {
     }
 
     final highlightsDir = await _highlightsDirectory();
+
+    // Clips with a custom volume get an audio-only re-encode pass (video
+    // stream just copied through) before concatenation, since the concat
+    // demuxer below can only stitch files together as-is — there's no
+    // per-segment filter left to apply afterwards once they're joined into
+    // one audio stream.
+    final concatFiles = <File>[];
+    for (final segment in _segments) {
+      if (segment.volume == 1) {
+        concatFiles.add(segment.file);
+        continue;
+      }
+      final volOutput = File('${highlightsDir.path}/segvol_${segment.id}.mp4');
+      if (await volOutput.exists()) {
+        await volOutput.delete();
+      }
+      final volSession = await FFmpegKit.executeWithArguments([
+        '-y',
+        '-i',
+        segment.file.path,
+        '-af',
+        'volume=${segment.volume}',
+        '-c:v',
+        'copy',
+        '-c:a',
+        'aac',
+        '-ar',
+        '44100',
+        '-ac',
+        '2',
+        volOutput.path,
+      ]);
+      if (!ReturnCode.isSuccess(await volSession.getReturnCode())) {
+        throw Exception('ffmpeg clip volume adjust failed');
+      }
+      concatFiles.add(volOutput);
+    }
+
     final listFile = File('${highlightsDir.path}/concat_list.txt');
     final buffer = StringBuffer();
-    for (final segment in _segments) {
-      final escapedPath = segment.file.path.replaceAll("'", r"'\''");
+    for (final file in concatFiles) {
+      final escapedPath = file.path.replaceAll("'", r"'\''");
       buffer.writeln("file '$escapedPath'");
     }
     await listFile.writeAsString(buffer.toString());
@@ -1129,6 +1230,7 @@ class HighlightReel extends ChangeNotifier {
           redoCount: segment.redoCount,
           frameRotationDegrees: segment.frameRotationDegrees,
           frameScale: segment.frameScale,
+          volume: segment.volume,
         ),
       );
     }
