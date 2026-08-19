@@ -55,6 +55,7 @@ class _EditScreenState extends State<EditScreen> {
   String? _previewError;
   bool _isPreviewPlaying = false;
   bool _isDownloading = false;
+  bool _isSavingAsNew = false;
   List<TextOverlay> _draftOverlays = [];
   double _previewWidth = 1;
 
@@ -494,17 +495,20 @@ class _EditScreenState extends State<EditScreen> {
   }
 
   Future<void> _handleSaveAsNew() async {
+    if (_isSavingAsNew) return;
     final title = await _promptForText(
       dialogTitle: 'まとめ動画を保存',
       fieldLabel: 'タイトル(省略可)',
       confirmLabel: '保存',
     );
     if (title == null) return;
+    setState(() => _isSavingAsNew = true);
     final entry = await widget.compilationLibrary.saveAsNew(
       _activeReel,
       title: title.isEmpty ? null : title,
     );
     if (!mounted) return;
+    setState(() => _isSavingAsNew = false);
     ScaffoldMessenger.of(
       context,
     ).showSnackBar(SnackBar(content: Text('「${entry.title}」として保存しました')));
@@ -643,9 +647,15 @@ class _EditScreenState extends State<EditScreen> {
                 : _handleDownload,
           ),
           IconButton(
-            icon: const Icon(Icons.save_alt),
+            icon: _isSavingAsNew
+                ? const SizedBox(
+                    width: 20,
+                    height: 20,
+                    child: CircularProgressIndicator(strokeWidth: 2),
+                  )
+                : const Icon(Icons.save_alt),
             tooltip: 'まとめ動画として保存',
-            onPressed: _handleSaveAsNew,
+            onPressed: _isSavingAsNew ? null : _handleSaveAsNew,
           ),
         ],
       ),
