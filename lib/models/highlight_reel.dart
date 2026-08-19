@@ -38,6 +38,13 @@ class HighlightReel extends ChangeNotifier {
 
   List<HighlightSegment> _segments = [];
   File? _compiledFile;
+
+  /// Clips + BGM/volume mixed in, but with no captions or opening baked
+  /// in — what the 編集 tab's live preview actually plays, so captions can
+  /// be rendered purely as Flutter widgets without ever duplicating a
+  /// burned-in copy of themselves. [compiledFile] (captions and opening
+  /// included) is what gets downloaded/exported.
+  File? _previewFile;
   bool _isProcessing = false;
   String? _errorMessage;
   ClipTrimMode _trimMode = ClipTrimMode.random;
@@ -65,6 +72,7 @@ class HighlightReel extends ChangeNotifier {
 
   List<HighlightSegment> get segments => List.unmodifiable(_segments);
   File? get compiledFile => _compiledFile;
+  File? get previewFile => _previewFile;
   bool get isProcessing => _isProcessing;
   String? get errorMessage => _errorMessage;
   ClipTrimMode get trimMode => _trimMode;
@@ -134,8 +142,7 @@ class HighlightReel extends ChangeNotifier {
     final manifest = await _manifestFile();
     if (await manifest.exists()) {
       try {
-        final raw =
-            jsonDecode(await manifest.readAsString()) as List<dynamic>;
+        final raw = jsonDecode(await manifest.readAsString()) as List<dynamic>;
         _segments = raw
             .map((e) => HighlightSegment.fromJson(e as Map<String, dynamic>))
             .where((segment) => segment.file.existsSync())
@@ -210,6 +217,9 @@ class HighlightReel extends ChangeNotifier {
 
     final output = await _compiledOutputFile();
     _compiledFile = await output.exists() ? output : null;
+    final highlightsDir = await _highlightsDirectory();
+    final preview = File('${highlightsDir.path}/preview.mp4');
+    _previewFile = await preview.exists() ? preview : null;
     notifyListeners();
   }
 
@@ -254,15 +264,13 @@ class HighlightReel extends ChangeNotifier {
 
   /// Sets the compiled video's export resolution/frame rate. Pass `null`
   /// to leave either unchanged.
-  Future<void> setExportSettings({
-    ExportResolution? resolution,
-    int? fps,
-  }) => _guarded(() async {
-    if (resolution != null) _exportResolution = resolution;
-    if (fps != null) _exportFps = fps;
-    await _persistSettings();
-    await _recompose();
-  }, '書き出し設定の変更に失敗しました');
+  Future<void> setExportSettings({ExportResolution? resolution, int? fps}) =>
+      _guarded(() async {
+        if (resolution != null) _exportResolution = resolution;
+        if (fps != null) _exportFps = fps;
+        await _persistSettings();
+        await _recompose();
+      }, '書き出し設定の変更に失敗しました');
 
   /// Toggles prepending an opening (built from the middle 1 second of each
   /// clip's source) before the main video on export. No-ops if there
@@ -280,7 +288,9 @@ class HighlightReel extends ChangeNotifier {
   Future<void> upsertTextOverlay(TextOverlay overlay) => _guarded(() async {
     final index = _textOverlays.indexWhere((o) => o.id == overlay.id);
     _textOverlays = [
-      if (index < 0) ..._textOverlays else ...[
+      if (index < 0)
+        ..._textOverlays
+      else ...[
         ..._textOverlays.sublist(0, index),
         ..._textOverlays.sublist(index + 1),
       ],
@@ -528,9 +538,12 @@ class HighlightReel extends ChangeNotifier {
 
   Future<Duration> _probeDuration(File source) async {
     final session = await FFprobeKit.executeWithArguments([
-      '-v', 'error',
-      '-show_entries', 'format=duration',
-      '-of', 'default=noprint_wrappers=1:nokey=1',
+      '-v',
+      'error',
+      '-show_entries',
+      'format=duration',
+      '-of',
+      'default=noprint_wrappers=1:nokey=1',
       source.path,
     ]);
     final output = (await session.getOutput())?.trim();
@@ -560,7 +573,8 @@ class HighlightReel extends ChangeNotifier {
         return Duration.zero;
       case ClipTrimMode.random:
         final duration = await _probeDuration(source);
-        final maxStartMs = duration.inMilliseconds - _clipDuration.inMilliseconds;
+        final maxStartMs =
+            duration.inMilliseconds - _clipDuration.inMilliseconds;
         if (maxStartMs <= 0) return Duration.zero;
         return Duration(milliseconds: _random.nextInt(maxStartMs + 1));
       case ClipTrimMode.loudest:
@@ -599,16 +613,22 @@ class HighlightReel extends ChangeNotifier {
 
   Future<double?> _meanVolumeAt(File source, double offsetSeconds) async {
     final session = await FFmpegKit.executeWithArguments([
-      '-ss', offsetSeconds.toStringAsFixed(2),
-      '-t', (_clipDuration.inMilliseconds / 1000).toStringAsFixed(2),
-      '-i', source.path,
-      '-af', 'volumedetect',
-      '-f', 'null',
+      '-ss',
+      offsetSeconds.toStringAsFixed(2),
+      '-t',
+      (_clipDuration.inMilliseconds / 1000).toStringAsFixed(2),
+      '-i',
+      source.path,
+      '-af',
+      'volumedetect',
+      '-f',
+      'null',
       '-',
     ]);
     final logs = await session.getAllLogsAsString() ?? '';
-    final match =
-        RegExp(r'mean_volume:\s*(-?\d+(\.\d+)?)\s*dB').firstMatch(logs);
+    final match = RegExp(
+      r'mean_volume:\s*(-?\d+(\.\d+)?)\s*dB',
+    ).firstMatch(logs);
     if (match == null) return null;
     return double.tryParse(match.group(1)!);
   }
@@ -643,16 +663,26 @@ class HighlightReel extends ChangeNotifier {
 
     final session = await FFmpegKit.executeWithArguments([
       '-y',
-      '-ss', (startOffset.inMilliseconds / 1000).toStringAsFixed(2),
-      '-i', source.path,
-      '-t', (duration.inMilliseconds / 1000).toStringAsFixed(2),
-      '-vf', filters.join(','),
-      '-r', '30',
-      '-c:v', 'libx264',
-      '-preset', 'veryfast',
-      '-c:a', 'aac',
-      '-ar', '44100',
-      '-ac', '2',
+      '-ss',
+      (startOffset.inMilliseconds / 1000).toStringAsFixed(2),
+      '-i',
+      source.path,
+      '-t',
+      (duration.inMilliseconds / 1000).toStringAsFixed(2),
+      '-vf',
+      filters.join(','),
+      '-r',
+      '30',
+      '-c:v',
+      'libx264',
+      '-preset',
+      'veryfast',
+      '-c:a',
+      'aac',
+      '-ar',
+      '44100',
+      '-ac',
+      '2',
       output.path,
     ]);
     final returnCode = await session.getReturnCode();
@@ -688,6 +718,7 @@ class HighlightReel extends ChangeNotifier {
         await output.delete();
       }
       _compiledFile = null;
+      _previewFile = null;
       _revision++;
       return;
     }
@@ -708,10 +739,14 @@ class HighlightReel extends ChangeNotifier {
 
     final concatSession = await FFmpegKit.executeWithArguments([
       '-y',
-      '-f', 'concat',
-      '-safe', '0',
-      '-i', listFile.path,
-      '-c', 'copy',
+      '-f',
+      'concat',
+      '-safe',
+      '0',
+      '-i',
+      listFile.path,
+      '-c',
+      'copy',
       concatOutput.path,
     ]);
     if (!ReturnCode.isSuccess(await concatSession.getReturnCode())) {
@@ -730,18 +765,27 @@ class HighlightReel extends ChangeNotifier {
       }
       final muxSession = await FFmpegKit.executeWithArguments([
         '-y',
-        '-i', current.path,
-        '-stream_loop', '-1',
-        '-i', bgm.path,
+        '-i',
+        current.path,
+        '-stream_loop',
+        '-1',
+        '-i',
+        bgm.path,
         '-filter_complex',
         '[0:a]volume=$_videoVolume[a0];[1:a]volume=$_bgmVolume[a1];'
             '[a0][a1]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]',
-        '-map', '0:v:0',
-        '-map', '[aout]',
-        '-c:v', 'copy',
-        '-c:a', 'aac',
-        '-ar', '44100',
-        '-ac', '2',
+        '-map',
+        '0:v:0',
+        '-map',
+        '[aout]',
+        '-c:v',
+        'copy',
+        '-c:a',
+        'aac',
+        '-ar',
+        '44100',
+        '-ac',
+        '2',
         '-shortest',
         bgmOutput.path,
       ]);
@@ -756,12 +800,18 @@ class HighlightReel extends ChangeNotifier {
       }
       final volumeSession = await FFmpegKit.executeWithArguments([
         '-y',
-        '-i', current.path,
-        '-af', 'volume=$_videoVolume',
-        '-c:v', 'copy',
-        '-c:a', 'aac',
-        '-ar', '44100',
-        '-ac', '2',
+        '-i',
+        current.path,
+        '-af',
+        'volume=$_videoVolume',
+        '-c:v',
+        'copy',
+        '-c:a',
+        'aac',
+        '-ar',
+        '44100',
+        '-ac',
+        '2',
         volumeOutput.path,
       ]);
       if (!ReturnCode.isSuccess(await volumeSession.getReturnCode())) {
@@ -769,6 +819,18 @@ class HighlightReel extends ChangeNotifier {
       }
       current = volumeOutput;
     }
+
+    // Snapshot the video here — clips + BGM/volume, no captions or opening
+    // yet — as the dedicated preview file. The 編集 tab's live preview
+    // plays this and renders every caption purely as Flutter widgets
+    // instead, so a caption never has to fight for visibility with an
+    // already-burned-in copy of itself.
+    final previewOutput = File('${highlightsDir.path}/preview.mp4');
+    if (await previewOutput.exists()) {
+      await previewOutput.delete();
+    }
+    await current.copy(previewOutput.path);
+    _previewFile = previewOutput;
 
     final renderedOverlays = _textOverlays
         .where((o) => o.renderedImagePath != null)
@@ -807,18 +869,30 @@ class HighlightReel extends ChangeNotifier {
 
         final session = await FFmpegKit.executeWithArguments([
           '-y',
-          '-i', current.path,
-          '-loop', '1',
-          '-framerate', '30',
-          '-t', totalSeconds.toStringAsFixed(2),
-          '-i', image.path,
-          '-filter_complex', filter,
-          '-map', '[outv]',
-          '-map', '0:a?',
-          '-c:v', 'libx264',
-          '-pix_fmt', 'yuv420p',
-          '-preset', 'veryfast',
-          '-c:a', 'copy',
+          '-i',
+          current.path,
+          '-loop',
+          '1',
+          '-framerate',
+          '30',
+          '-t',
+          totalSeconds.toStringAsFixed(2),
+          '-i',
+          image.path,
+          '-filter_complex',
+          filter,
+          '-map',
+          '[outv]',
+          '-map',
+          '0:a?',
+          '-c:v',
+          'libx264',
+          '-pix_fmt',
+          'yuv420p',
+          '-preset',
+          'veryfast',
+          '-c:a',
+          'copy',
           stepOutput.path,
         ]);
         if (!ReturnCode.isSuccess(await session.getReturnCode())) {
@@ -837,17 +911,26 @@ class HighlightReel extends ChangeNotifier {
       }
       final prependSession = await FFmpegKit.executeWithArguments([
         '-y',
-        '-i', opening.path,
-        '-i', current.path,
+        '-i',
+        opening.path,
+        '-i',
+        current.path,
         '-filter_complex',
         '[0:v][0:a][1:v][1:a]concat=n=2:v=1:a=1[outv][outa]',
-        '-map', '[outv]',
-        '-map', '[outa]',
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-c:a', 'aac',
-        '-ar', '44100',
-        '-ac', '2',
+        '-map',
+        '[outv]',
+        '-map',
+        '[outa]',
+        '-c:v',
+        'libx264',
+        '-preset',
+        'veryfast',
+        '-c:a',
+        'aac',
+        '-ar',
+        '44100',
+        '-ac',
+        '2',
         withOpening.path,
       ]);
       if (!ReturnCode.isSuccess(await prependSession.getReturnCode())) {
@@ -863,13 +946,18 @@ class HighlightReel extends ChangeNotifier {
       }
       final exportSession = await FFmpegKit.executeWithArguments([
         '-y',
-        '-i', current.path,
+        '-i',
+        current.path,
         '-vf',
         'scale=${_exportResolution.width}:${_exportResolution.height}',
-        '-r', '$_exportFps',
-        '-c:v', 'libx264',
-        '-preset', 'veryfast',
-        '-c:a', 'copy',
+        '-r',
+        '$_exportFps',
+        '-c:v',
+        'libx264',
+        '-preset',
+        'veryfast',
+        '-c:a',
+        'copy',
         exportOutput.path,
       ]);
       if (!ReturnCode.isSuccess(await exportSession.getReturnCode())) {
@@ -911,8 +999,7 @@ class HighlightReel extends ChangeNotifier {
 
       var mid = Duration(
         milliseconds:
-            (sourceDuration.inMilliseconds - pieceDuration.inMilliseconds) ~/
-                2,
+            (sourceDuration.inMilliseconds - pieceDuration.inMilliseconds) ~/ 2,
       );
       if (mid < Duration.zero) mid = Duration.zero;
       var actualPieceDuration = pieceDuration;
@@ -948,10 +1035,14 @@ class HighlightReel extends ChangeNotifier {
     }
     final session = await FFmpegKit.executeWithArguments([
       '-y',
-      '-f', 'concat',
-      '-safe', '0',
-      '-i', openingListFile.path,
-      '-c', 'copy',
+      '-f',
+      'concat',
+      '-safe',
+      '0',
+      '-i',
+      openingListFile.path,
+      '-c',
+      'copy',
       openingOutput.path,
     ]);
     if (!ReturnCode.isSuccess(await session.getReturnCode())) {

@@ -148,13 +148,15 @@ class _EditScreenState extends State<EditScreen> {
     await _loadPreview();
   }
 
-  /// Reloads the preview from [_activeReel.compiledFile]. When
+  /// Reloads the preview from [_activeReel.previewFile] — clips + BGM, but
+  /// with no captions baked in, since captions are rendered purely as
+  /// Flutter widgets over this (see [_buildOverlaysLayer]). When
   /// [preservePosition] is true (recomposes of the *same* compilation —
   /// e.g. after editing a caption), the current playback position and
   /// playing state carry over instead of resetting to the start; switching
   /// to a different compilation always starts fresh.
   Future<void> _loadPreview({bool preservePosition = false}) async {
-    final file = _activeReel.compiledFile;
+    final file = _activeReel.previewFile;
     final oldController = _previewController;
     final resumePosition = preservePosition
         ? oldController?.value.position
@@ -763,16 +765,39 @@ class _EditScreenState extends State<EditScreen> {
     );
   }
 
-  /// Shows only the timeline-selected caption as a draggable/resizable
-  /// widget. Every other caption is already burned into the compiled
-  /// video itself, so rendering them here too would just duplicate them
-  /// on screen.
+  /// Renders every caption as a Flutter widget, shown while the playhead
+  /// is within its own time range — matching what the exported video will
+  /// show — except the timeline-selected one, which stays visible
+  /// regardless of position so it can be positioned/resized without
+  /// having to scrub to its own time window first. The preview plays
+  /// [HighlightReel.previewFile], which never has captions baked in, so
+  /// there's nothing for these widgets to duplicate.
   Widget _buildOverlaysLayer(double previewWidth, double previewHeight) {
-    final overlay = _draftOverlays
-        .where((o) => o.id == _selectedCaptionId)
-        .firstOrNull;
-    if (overlay == null) return const SizedBox.shrink();
-    return _buildOverlayWidget(overlay, previewWidth, previewHeight);
+    final controller = _previewController;
+    if (controller == null) {
+      return Stack(
+        children: [
+          for (final overlay in _draftOverlays)
+            if (overlay.id == _selectedCaptionId)
+              _buildOverlayWidget(overlay, previewWidth, previewHeight),
+        ],
+      );
+    }
+    return ValueListenableBuilder<VideoPlayerValue>(
+      valueListenable: controller,
+      builder: (context, value, _) {
+        final seconds = value.position.inMilliseconds / 1000;
+        return Stack(
+          children: [
+            for (final overlay in _draftOverlays)
+              if (overlay.id == _selectedCaptionId ||
+                  (seconds >= overlay.startSeconds &&
+                      seconds <= overlay.endSeconds))
+                _buildOverlayWidget(overlay, previewWidth, previewHeight),
+          ],
+        );
+      },
+    );
   }
 
   Widget _buildOverlayWidget(
