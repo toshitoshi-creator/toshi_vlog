@@ -3,12 +3,15 @@ import 'package:flutter/material.dart';
 import '../models/app_font.dart';
 import '../models/compilation_library.dart';
 import '../models/download_quota.dart';
+import '../models/sound_library.dart';
 import '../models/subscription_service.dart';
 import '../models/text_overlay.dart';
+import '../models/video_library.dart';
 import '../utils/text_overlay_renderer.dart';
 import '../widgets/clip_management_section.dart';
 import '../widgets/compiled_preview_section.dart';
 import '../widgets/text_overlay_form_sheet.dart';
+import 'sound_library_screen.dart';
 
 class HighlightScreen extends StatefulWidget {
   const HighlightScreen({
@@ -16,11 +19,15 @@ class HighlightScreen extends StatefulWidget {
     required this.compilationLibrary,
     required this.subscriptionService,
     required this.downloadQuota,
+    required this.soundLibrary,
+    required this.videoLibrary,
   });
 
   final CompilationLibrary compilationLibrary;
   final SubscriptionService subscriptionService;
   final DownloadQuota downloadQuota;
+  final SoundLibrary soundLibrary;
+  final VideoLibrary videoLibrary;
 
   @override
   State<HighlightScreen> createState() => _HighlightScreenState();
@@ -108,6 +115,21 @@ class _HighlightScreenState extends State<HighlightScreen> {
     await _handleFormResult(result);
   }
 
+  /// Just picking a track and adjusting its volume — no multi-track
+  /// timeline editing here, that's the 編集 tab's job.
+  Future<void> _handlePickBgm() async {
+    final result = await Navigator.of(context).push<SoundSelection>(
+      MaterialPageRoute(
+        builder: (_) => SoundLibraryScreen(
+          soundLibrary: widget.soundLibrary,
+          videoLibrary: widget.videoLibrary,
+        ),
+      ),
+    );
+    if (result == null) return;
+    await widget.compilationLibrary.current.setBgm(result.sound);
+  }
+
   /// Overwrites the 編集 tab's independent project with a fresh copy of
   /// this one. One-directional by design — there's no equivalent button
   /// on the 編集 tab side to copy back.
@@ -155,6 +177,13 @@ class _HighlightScreenState extends State<HighlightScreen> {
         title: const Text('簡易編集'),
         actions: [
           IconButton(
+            icon: Icon(
+              reel.bgmFile != null ? Icons.music_note : Icons.music_off,
+            ),
+            tooltip: reel.bgmTitle ?? 'BGMを選ぶ',
+            onPressed: _handlePickBgm,
+          ),
+          IconButton(
             icon: const Icon(Icons.arrow_circle_right_outlined),
             tooltip: '編集タブにコピー',
             onPressed: _copyToEditTab,
@@ -185,6 +214,43 @@ class _HighlightScreenState extends State<HighlightScreen> {
             subscriptionService: widget.subscriptionService,
           ),
           const Divider(height: 1),
+          if (reel.bgmFile != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 8, 16, 0),
+              child: Row(
+                children: [
+                  const Icon(Icons.music_note, size: 20),
+                  const SizedBox(width: 8),
+                  Expanded(
+                    child: Text(
+                      reel.bgmTitle ?? 'BGM',
+                      overflow: TextOverflow.ellipsis,
+                    ),
+                  ),
+                  IconButton(
+                    icon: const Icon(Icons.close),
+                    tooltip: 'BGMを解除',
+                    onPressed: () => reel.setBgm(null),
+                  ),
+                ],
+              ),
+            ),
+          if (reel.bgmFile != null)
+            Padding(
+              padding: const EdgeInsets.fromLTRB(16, 0, 16, 8),
+              child: Row(
+                children: [
+                  const Icon(Icons.volume_up, size: 20),
+                  Expanded(
+                    child: Slider(
+                      value: reel.bgmVolume.clamp(0, 1),
+                      onChanged: (v) => reel.setVolumes(bgmVolume: v),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          if (reel.bgmFile != null) const Divider(height: 1),
           Padding(
             padding: const EdgeInsets.fromLTRB(16, 16, 16, 8),
             child: Row(

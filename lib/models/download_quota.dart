@@ -9,7 +9,7 @@ import 'package:path_provider/path_provider.dart';
 /// Like the rest of the app's entitlement checks, there's no backend, so
 /// this is trusted client-side state rather than a tamper-proof limit.
 class DownloadQuota extends ChangeNotifier {
-  static const freeDownloadsPerDay = 3;
+  static const freeDownloadsPerDay = 2;
 
   DateTime? _countDate;
   int _count = 0;

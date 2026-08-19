@@ -54,6 +54,14 @@ class HighlightReel extends ChangeNotifier {
   String? _bgmTitle;
   double _bgmVolume = 1;
   double _videoVolume = 1;
+
+  /// Where in the video's own timeline the BGM starts playing, and where it
+  /// stops (null = plays through to the end of the video). Only meaningful
+  /// once [bgmFile] is set; the 編集 tab's timeline shows/edits this as a
+  /// draggable bar, while 簡易編集's simpler BGM picker never touches it,
+  /// leaving new tracks spanning the whole video by default.
+  double _bgmStartSeconds = 0;
+  double? _bgmEndSeconds;
   List<TextOverlay> _textOverlays = [];
   ExportResolution _exportResolution = ExportResolution.hd;
   int _exportFps = 30;
@@ -81,6 +89,14 @@ class HighlightReel extends ChangeNotifier {
   String? get bgmTitle => _bgmTitle;
   double get bgmVolume => _bgmVolume;
   double get videoVolume => _videoVolume;
+  double get bgmStartSeconds => _bgmStartSeconds;
+  double? get bgmEndSeconds => _bgmEndSeconds;
+
+  /// The video's current total duration in seconds, used to resolve a null
+  /// [bgmEndSeconds] (BGM plays to the end) to a concrete value for display.
+  double get totalSeconds =>
+      _segments.fold<int>(0, (sum, s) => sum + s.duration.inMilliseconds) /
+      1000;
   List<TextOverlay> get textOverlays => List.unmodifiable(_textOverlays);
   int get revision => _revision;
   ExportResolution get exportResolution => _exportResolution;
@@ -192,6 +208,8 @@ class HighlightReel extends ChangeNotifier {
         }
         _bgmVolume = (raw['bgmVolume'] as num?)?.toDouble() ?? 1;
         _videoVolume = (raw['videoVolume'] as num?)?.toDouble() ?? 1;
+        _bgmStartSeconds = (raw['bgmStartSeconds'] as num?)?.toDouble() ?? 0;
+        _bgmEndSeconds = (raw['bgmEndSeconds'] as num?)?.toDouble();
         _exportResolution = ExportResolution.fromName(
           raw['exportResolution'] as String?,
         );
@@ -247,9 +265,26 @@ class HighlightReel extends ChangeNotifier {
   Future<void> setBgm(SavedSound? sound) => _guarded(() async {
     _bgmFile = sound?.file;
     _bgmTitle = sound?.title;
+    // A newly picked track's old placement wouldn't make sense against a
+    // different track, so reset to "spans the whole video" — also what
+    // 簡易編集's insertion-only picker relies on, since it never calls
+    // setBgmTiming at all.
+    _bgmStartSeconds = 0;
+    _bgmEndSeconds = null;
     await _persistSettings();
     await _recompose();
   }, 'BGMの設定に失敗しました');
+
+  /// Adjusts where in the video's timeline the BGM plays, as dragged on the
+  /// 編集 tab's timeline. [end] of `null` means "through to the end of the
+  /// video". No-ops if there's no BGM set.
+  Future<void> setBgmTiming(double start, double? end) => _guarded(() async {
+    if (_bgmFile == null) return;
+    _bgmStartSeconds = start;
+    _bgmEndSeconds = end;
+    await _persistSettings();
+    await _recompose();
+  }, 'BGMのタイミング設定に失敗しました');
 
   /// Sets the mix volume (0 = silent, 1 = original level, can go higher)
   /// for the BGM track and/or the clips' own recorded audio. Pass `null`
@@ -324,6 +359,8 @@ class HighlightReel extends ChangeNotifier {
         'bgmTitle': _bgmTitle,
         'bgmVolume': _bgmVolume,
         'videoVolume': _videoVolume,
+        'bgmStartSeconds': _bgmStartSeconds,
+        'bgmEndSeconds': _bgmEndSeconds,
         'exportResolution': _exportResolution.name,
         'exportFps': _exportFps,
         'includeOpening': _includeOpening,
@@ -756,9 +793,23 @@ class HighlightReel extends ChangeNotifier {
     File current = concatOutput;
 
     final bgm = _bgmFile;
-    if (bgm != null && await bgm.exists()) {
-      // Loops the BGM to cover the whole video and mixes it with the
-      // clips' own audio, each independently volume-scaled.
+    final bgmSpanValid =
+        _bgmEndSeconds == null || _bgmEndSeconds! - _bgmStartSeconds > 0.05;
+    if (bgm != null && bgmSpanValid && await bgm.exists()) {
+      // Loops the BGM (so short tracks still fill their placed span), then
+      // trims to the span the 編集 tab's timeline placed it at and delays
+      // it to start at the right point in the video's own timeline, before
+      // mixing with the clips' own audio (each independently volume-scaled).
+      final videoTotalSeconds =
+          (await _probeDuration(current)).inMilliseconds / 1000;
+      final bgmStart = _bgmStartSeconds.clamp(0.0, videoTotalSeconds);
+      final bgmEnd = (_bgmEndSeconds ?? videoTotalSeconds).clamp(
+        bgmStart,
+        videoTotalSeconds,
+      );
+      final bgmSpan = bgmEnd - bgmStart;
+      final bgmStartMs = (bgmStart * 1000).round();
+
       final bgmOutput = File('${highlightsDir.path}/with_bgm.mp4');
       if (await bgmOutput.exists()) {
         await bgmOutput.delete();
@@ -772,7 +823,9 @@ class HighlightReel extends ChangeNotifier {
         '-i',
         bgm.path,
         '-filter_complex',
-        '[0:a]volume=$_videoVolume[a0];[1:a]volume=$_bgmVolume[a1];'
+        '[0:a]volume=$_videoVolume[a0];'
+            '[1:a]volume=$_bgmVolume,atrim=0:${bgmSpan.toStringAsFixed(3)},'
+            'adelay=$bgmStartMs|$bgmStartMs[a1];'
             '[a0][a1]amix=inputs=2:duration=first:dropout_transition=0:normalize=0[aout]',
         '-map',
         '0:v:0',
@@ -1115,6 +1168,8 @@ class HighlightReel extends ChangeNotifier {
     target._bgmTitle = _bgmTitle;
     target._bgmVolume = _bgmVolume;
     target._videoVolume = _videoVolume;
+    target._bgmStartSeconds = _bgmStartSeconds;
+    target._bgmEndSeconds = _bgmEndSeconds;
     target._exportResolution = _exportResolution;
     target._exportFps = _exportFps;
     target._includeOpening = _includeOpening;

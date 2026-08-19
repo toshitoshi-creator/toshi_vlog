@@ -31,6 +31,7 @@ class VideoEditorTimeline extends StatefulWidget {
     required this.onAddText,
     required this.onEditFraming,
     required this.onDeselectAll,
+    required this.onCommitBgmTiming,
   });
 
   final HighlightReel reel;
@@ -75,6 +76,11 @@ class VideoEditorTimeline extends StatefulWidget {
   /// selection is cleared locally at the same time.
   final VoidCallback onDeselectAll;
 
+  /// Fired when a drag on the BGM bar ends — [newStart] is where it now
+  /// starts in the video's timeline, [newEnd] is where it stops (`null` =
+  /// through to the end of the video).
+  final void Function(double newStart, double? newEnd) onCommitBgmTiming;
+
   @override
   State<VideoEditorTimeline> createState() => _VideoEditorTimelineState();
 }
@@ -82,6 +88,7 @@ class VideoEditorTimeline extends StatefulWidget {
 class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
   static const _rulerHeight = 20.0;
   static const _clipTrackHeight = 56.0;
+  static const _bgmRowHeight = 32.0;
   static const _captionRowHeight = 40.0;
   static const _handleWidth = 22.0;
   static const _minZoom = 20.0;
@@ -103,6 +110,14 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
   Duration? _liveClipDuration;
   double _reorderLiveDx = 0;
   int? _reorderTargetIndex;
+
+  // BGM bar drag state (only one BGM track, so no id needed).
+  bool _isDraggingBgm = false;
+  bool? _draggingBgmLeftEdge;
+  double _gestureStartBgmStart = 0;
+  double _gestureStartBgmEnd = 0;
+  double? _liveBgmStart;
+  double? _liveBgmEnd;
 
   // Caption drag state.
   String? _draggingCaptionId;
@@ -349,6 +364,73 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
     });
   }
 
+  // ---- BGM bar drag (mirrors the caption drag below: long-press + move,
+  // either edge to trim or the body to shift the whole placed span) ----
+
+  void _beginBgmDrag({bool? leftEdge}) {
+    setState(() {
+      _isDraggingBgm = true;
+      _draggingBgmLeftEdge = leftEdge;
+      _gestureStartBgmStart = widget.reel.bgmStartSeconds;
+      _gestureStartBgmEnd = widget.reel.bgmEndSeconds ?? _totalSeconds;
+      _liveBgmStart = _gestureStartBgmStart;
+      _liveBgmEnd = _gestureStartBgmEnd;
+    });
+  }
+
+  void _updateBgmDrag(double totalDx) {
+    final deltaSeconds = totalDx / _pixelsPerSecond;
+    const minGap = 0.5;
+    var start = _gestureStartBgmStart;
+    var end = _gestureStartBgmEnd;
+    if (_draggingBgmLeftEdge == true) {
+      start = (_gestureStartBgmStart + deltaSeconds).clamp(
+        0.0,
+        _gestureStartBgmEnd - minGap,
+      );
+    } else if (_draggingBgmLeftEdge == false) {
+      end = (_gestureStartBgmEnd + deltaSeconds).clamp(
+        _gestureStartBgmStart + minGap,
+        _totalSeconds,
+      );
+    } else {
+      final duration = _gestureStartBgmEnd - _gestureStartBgmStart;
+      final shift = deltaSeconds.clamp(
+        -_gestureStartBgmStart,
+        _totalSeconds - _gestureStartBgmEnd,
+      );
+      start = _gestureStartBgmStart + shift;
+      end = start + duration;
+    }
+    setState(() {
+      _liveBgmStart = start;
+      _liveBgmEnd = end;
+    });
+  }
+
+  void _endBgmDrag() {
+    final start = _liveBgmStart;
+    final end = _liveBgmEnd;
+    setState(() {
+      _isDraggingBgm = false;
+      _draggingBgmLeftEdge = null;
+      _liveBgmStart = null;
+      _liveBgmEnd = null;
+    });
+    if (start != null && end != null) {
+      widget.onCommitBgmTiming(start, end >= _totalSeconds - 0.05 ? null : end);
+    }
+  }
+
+  void _cancelBgmDrag() {
+    setState(() {
+      _isDraggingBgm = false;
+      _draggingBgmLeftEdge = null;
+      _liveBgmStart = null;
+      _liveBgmEnd = null;
+    });
+  }
+
   // ---- Caption timing drag (long-press + move, mirroring the clip block's
   // proven long-press-based reorder gesture so it doesn't compete with the
   // ancestor horizontal ScrollView's own drag-to-scroll recognizer) ----
@@ -463,8 +545,12 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
   @override
   Widget build(BuildContext context) {
     final rows = _layoutCaptionRows(widget.overlays);
+    final hasBgm = widget.reel.bgmFile != null;
     final trackHeight =
-        _rulerHeight + _clipTrackHeight + rows.length * _captionRowHeight;
+        _rulerHeight +
+        _clipTrackHeight +
+        (hasBgm ? _bgmRowHeight : 0) +
+        rows.length * _captionRowHeight;
 
     return Column(
       crossAxisAlignment: CrossAxisAlignment.start,
@@ -540,6 +626,7 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
                           children: [
                             _buildRuler(contentWidth),
                             _buildClipTrack(contentWidth),
+                            if (hasBgm) _buildBgmRow(contentWidth),
                             for (final row in rows)
                               _buildCaptionRow(row, contentWidth),
                           ],
@@ -709,6 +796,124 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
             color: Colors.white,
           ),
         ),
+      ),
+    );
+  }
+
+  Widget _buildBgmRow(double width) {
+    final reel = widget.reel;
+    final start = _isDraggingBgm
+        ? _liveBgmStart ?? reel.bgmStartSeconds
+        : reel.bgmStartSeconds;
+    final end = _isDraggingBgm
+        ? _liveBgmEnd ?? (reel.bgmEndSeconds ?? _totalSeconds)
+        : (reel.bgmEndSeconds ?? _totalSeconds);
+    final left = start * _pixelsPerSecond;
+    final barWidth = ((end - start) * _pixelsPerSecond).clamp(
+      _handleWidth * 2,
+      double.infinity,
+    );
+
+    return SizedBox(
+      width: width,
+      height: _bgmRowHeight,
+      child: Stack(
+        children: [
+          Positioned(
+            left: left,
+            top: 2,
+            width: barWidth,
+            height: _bgmRowHeight - 4,
+            child: Container(
+              decoration: BoxDecoration(
+                color: Colors.teal.withValues(alpha: 0.85),
+                borderRadius: BorderRadius.circular(4),
+                border: Border.all(color: Colors.black26),
+              ),
+              clipBehavior: Clip.antiAlias,
+              child: Stack(
+                children: [
+                  Positioned.fill(
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onLongPressStart: (_) => _beginBgmDrag(),
+                      onLongPressMoveUpdate: (details) =>
+                          _updateBgmDrag(details.offsetFromOrigin.dx),
+                      onLongPressEnd: (_) => _endBgmDrag(),
+                      onLongPressCancel: _cancelBgmDrag,
+                      child: Padding(
+                        padding: EdgeInsets.symmetric(
+                          horizontal: _handleWidth + 2,
+                        ),
+                        child: Row(
+                          children: [
+                            const Icon(
+                              Icons.music_note,
+                              size: 12,
+                              color: Colors.white,
+                            ),
+                            const SizedBox(width: 2),
+                            Expanded(
+                              child: Text(
+                                reel.bgmTitle ?? 'BGM',
+                                maxLines: 1,
+                                overflow: TextOverflow.ellipsis,
+                                style: const TextStyle(
+                                  fontSize: 11,
+                                  color: Colors.white,
+                                ),
+                              ),
+                            ),
+                          ],
+                        ),
+                      ),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerLeft,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onLongPressStart: (_) => _beginBgmDrag(leftEdge: true),
+                      onLongPressMoveUpdate: (details) =>
+                          _updateBgmDrag(details.offsetFromOrigin.dx),
+                      onLongPressEnd: (_) => _endBgmDrag(),
+                      onLongPressCancel: _cancelBgmDrag,
+                      child: Container(
+                        width: _handleWidth,
+                        color: Colors.black26,
+                        child: const Icon(
+                          Icons.drag_indicator,
+                          size: 14,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                  Align(
+                    alignment: Alignment.centerRight,
+                    child: GestureDetector(
+                      behavior: HitTestBehavior.opaque,
+                      onLongPressStart: (_) => _beginBgmDrag(leftEdge: false),
+                      onLongPressMoveUpdate: (details) =>
+                          _updateBgmDrag(details.offsetFromOrigin.dx),
+                      onLongPressEnd: (_) => _endBgmDrag(),
+                      onLongPressCancel: _cancelBgmDrag,
+                      child: Container(
+                        width: _handleWidth,
+                        color: Colors.black26,
+                        child: const Icon(
+                          Icons.drag_indicator,
+                          size: 14,
+                          color: Colors.white,
+                        ),
+                      ),
+                    ),
+                  ),
+                ],
+              ),
+            ),
+          ),
+        ],
       ),
     );
   }

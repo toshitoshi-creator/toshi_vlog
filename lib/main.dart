@@ -83,6 +83,8 @@ class _RootScreenState extends State<RootScreen> {
         compilationLibrary: _compilationLibrary,
         subscriptionService: _subscriptionService,
         downloadQuota: _downloadQuota,
+        soundLibrary: _soundLibrary,
+        videoLibrary: _videoLibrary,
       ),
       EditScreen(
         compilationLibrary: _compilationLibrary,

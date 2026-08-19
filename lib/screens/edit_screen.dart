@@ -18,6 +18,7 @@ import '../widgets/export_settings_sheet.dart';
 import '../widgets/text_overlay_form_sheet.dart';
 import '../widgets/video_editor_timeline.dart';
 import 'clip_framing_screen.dart';
+import 'paywall_screen.dart';
 import 'sound_library_screen.dart';
 
 /// The Adobe Premiere-style advanced editor: video preview + multi-track
@@ -494,8 +495,23 @@ class _EditScreenState extends State<EditScreen> {
     if (mounted) setState(() => _isDownloading = false);
   }
 
+  /// Free まとめ動画 saves before a subscription is required.
+  static const _freeSavedCompilations = 2;
+
   Future<void> _handleSaveAsNew() async {
     if (_isSavingAsNew) return;
+    final canSaveFree =
+        widget.subscriptionService.isPremium ||
+        widget.compilationLibrary.saved.length < _freeSavedCompilations;
+    if (!canSaveFree) {
+      await Navigator.of(context).push(
+        MaterialPageRoute(
+          builder: (_) =>
+              PaywallScreen(subscriptionService: widget.subscriptionService),
+        ),
+      );
+      return;
+    }
     final title = await _promptForText(
       dialogTitle: 'まとめ動画を保存',
       fieldLabel: 'タイトル(省略可)',
@@ -704,6 +720,8 @@ class _EditScreenState extends State<EditScreen> {
                   onAddText: _handleAddTextPressed,
                   onEditFraming: _handleEditFraming,
                   onDeselectAll: _handleDeselectAll,
+                  onCommitBgmTiming: (start, end) =>
+                      reel.setBgmTiming(start, end),
                 ),
                 const SizedBox(height: 8),
               ],
