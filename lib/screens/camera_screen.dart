@@ -150,28 +150,52 @@ class _CameraScreenState extends State<CameraScreen>
     if (_isRecording) {
       await _stopRecordingAndReview();
     } else {
+      final started = await _startRecordingWithRetry(controller);
+      if (!started) {
+        if (mounted) setState(() => _errorMessage = '録画を開始できませんでした');
+        return;
+      }
+      _recordingStartedAt = DateTime.now();
+      setState(() {
+        _isRecording = true;
+        _recordingElapsed = Duration.zero;
+      });
+      _autoStopTimer = Timer(_maxRecordingDuration, _stopRecordingAndReview);
+      _recordingTickTimer = Timer.periodic(const Duration(milliseconds: 200), (
+        _,
+      ) {
+        final startedAt = _recordingStartedAt;
+        if (!mounted || startedAt == null) return;
+        setState(
+          () => _recordingElapsed = DateTime.now().difference(startedAt),
+        );
+      });
+    }
+  }
+
+  /// The native camera session can still be finalizing the previous
+  /// recording for a brief moment right after returning from the
+  /// save/retake screen, which can make an immediate next
+  /// startVideoRecording() call fail. Retry a couple of times with a short
+  /// backoff before actually reporting it as an error.
+  Future<bool> _startRecordingWithRetry(CameraController controller) async {
+    const retryDelays = [
+      Duration.zero,
+      Duration(milliseconds: 300),
+      Duration(milliseconds: 600),
+    ];
+    for (var i = 0; i < retryDelays.length; i++) {
+      if (retryDelays[i] > Duration.zero) {
+        await Future.delayed(retryDelays[i]);
+      }
       try {
         await controller.startVideoRecording();
-        _recordingStartedAt = DateTime.now();
-        setState(() {
-          _isRecording = true;
-          _recordingElapsed = Duration.zero;
-        });
-        _autoStopTimer = Timer(_maxRecordingDuration, _stopRecordingAndReview);
-        _recordingTickTimer = Timer.periodic(
-          const Duration(milliseconds: 200),
-          (_) {
-            final startedAt = _recordingStartedAt;
-            if (!mounted || startedAt == null) return;
-            setState(
-              () => _recordingElapsed = DateTime.now().difference(startedAt),
-            );
-          },
-        );
+        return true;
       } catch (_) {
-        if (mounted) setState(() => _errorMessage = '録画を開始できませんでした');
+        if (i == retryDelays.length - 1) return false;
       }
     }
+    return false;
   }
 
   Future<void> _stopRecordingAndReview() async {
@@ -318,10 +342,7 @@ class _CameraScreenState extends State<CameraScreen>
                   mainAxisSize: MainAxisSize.min,
                   crossAxisAlignment: CrossAxisAlignment.start,
                   children: [
-                    Text(
-                      '画質',
-                      style: Theme.of(context).textTheme.labelLarge,
-                    ),
+                    Text('画質', style: Theme.of(context).textTheme.labelLarge),
                     const SizedBox(height: 8),
                     SegmentedButton<ResolutionPreset>(
                       segments: const [
