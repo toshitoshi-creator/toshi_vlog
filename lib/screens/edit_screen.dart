@@ -531,6 +531,15 @@ class _EditScreenState extends State<EditScreen> {
     required String confirmLabel,
     String initialText = '',
   }) async {
+    // Not disposed on purpose: showDialog's Future resolves as soon as
+    // Navigator.pop() is called, but the dialog's widgets (including this
+    // still-focused TextField) stay mounted through the exit transition
+    // animation that follows. Disposing the controller right after await
+    // returns raced against that, crashing with framework assertions
+    // ("_dependents.isEmpty is not true" / "TextEditingController used
+    // after being disposed") depending on exactly when the animation's
+    // teardown landed. A short-lived one-off dialog controller like this
+    // is a fine, common tradeoff to leave for the GC.
     final controller = TextEditingController(text: initialText);
     final result = await showDialog<String>(
       context: context,
@@ -553,7 +562,6 @@ class _EditScreenState extends State<EditScreen> {
         ],
       ),
     );
-    controller.dispose();
     return result;
   }
 
