@@ -12,10 +12,11 @@ String formatSeconds(double seconds) {
 }
 
 /// Modal bottom sheet for adding/editing a caption's text, font, size,
-/// color, and visible time range. Shared by the まとめ tab (簡易編集: add and
-/// manage captions from a plain list) and the 編集 tab (its timeline opens
-/// this for font/color/size changes; position/rotation/timing are also
-/// adjustable directly on the 編集 tab's canvas/timeline).
+/// color, and position. Shared by the まとめ tab (簡易編集: add and manage
+/// captions from a plain list) and the 編集 tab (its timeline opens this
+/// for font/color/size changes; position/rotation are also adjustable
+/// directly on the 編集 tab's canvas, and timing via the timeline's drag
+/// handles).
 ///
 /// Pops with the updated [TextOverlay] on save, or with no result if
 /// cancelled. If [onDelete] is provided, a delete button is shown; tapping
@@ -27,6 +28,7 @@ class TextOverlayFormSheet extends StatefulWidget {
     required this.initial,
     required this.totalSeconds,
     required this.clipBoundarySeconds,
+    this.showClipPicker = false,
     this.onDelete,
   });
 
@@ -35,9 +37,14 @@ class TextOverlayFormSheet extends StatefulWidget {
   /// Total duration of the compiled video (pre-BGM/text), in seconds.
   final double totalSeconds;
 
-  /// Cumulative clip start times (seconds), including 0 and [totalSeconds],
-  /// used to draw tick marks on the timeline for reference.
+  /// Cumulative clip start times (seconds), including 0 and [totalSeconds].
   final List<double> clipBoundarySeconds;
+
+  /// Shows a simple "which clip(s) should this caption appear on" checkbox
+  /// picker built from [clipBoundarySeconds], used by the まとめ tab's
+  /// 簡易編集 (which has no visual timeline to drag timing on). The 編集
+  /// tab leaves this off and sets timing via its timeline instead.
+  final bool showClipPicker;
 
   final VoidCallback? onDelete;
 
@@ -55,6 +62,7 @@ class _TextOverlayFormSheetState extends State<TextOverlayFormSheet> {
   late double _rotationDegrees;
   late double _startSeconds;
   late double _endSeconds;
+  Set<int> _selectedClipIndices = {};
 
   static const _fontSizePresets = [
     (label: '小', value: 36.0),
@@ -97,6 +105,47 @@ class _TextOverlayFormSheetState extends State<TextOverlayFormSheet> {
     _startSeconds = widget.initial.startSeconds.clamp(0.0, maxSeconds);
     _endSeconds = widget.initial.endSeconds.clamp(0.0, maxSeconds);
     if (_startSeconds > _endSeconds) _startSeconds = _endSeconds;
+    if (widget.showClipPicker) {
+      _selectedClipIndices = _clipIndicesInRange(_startSeconds, _endSeconds);
+    }
+  }
+
+  /// Which clips (by index into [TextOverlayFormSheet.clipBoundarySeconds])
+  /// overlap [start, end] — used to preselect the clip picker's checkboxes
+  /// when editing an existing caption. Falls back to every clip if none
+  /// overlap (e.g. a zero-length legacy range).
+  Set<int> _clipIndicesInRange(double start, double end) {
+    final indices = <int>{};
+    for (var i = 0; i < widget.clipBoundarySeconds.length - 1; i++) {
+      final clipStart = widget.clipBoundarySeconds[i];
+      final clipEnd = widget.clipBoundarySeconds[i + 1];
+      if (start < clipEnd && end > clipStart) indices.add(i);
+    }
+    if (indices.isEmpty && widget.clipBoundarySeconds.length > 1) {
+      indices.addAll(
+        List.generate(widget.clipBoundarySeconds.length - 1, (i) => i),
+      );
+    }
+    return indices;
+  }
+
+  /// Toggles clip [index] in the picker, keeping at least one clip
+  /// selected, and recomputes the caption's start/end as the contiguous
+  /// span from the earliest to the latest selected clip.
+  void _toggleClip(int index) {
+    setState(() {
+      if (_selectedClipIndices.contains(index)) {
+        if (_selectedClipIndices.length > 1) {
+          _selectedClipIndices.remove(index);
+        }
+      } else {
+        _selectedClipIndices.add(index);
+      }
+      final minIndex = _selectedClipIndices.reduce((a, b) => a < b ? a : b);
+      final maxIndex = _selectedClipIndices.reduce((a, b) => a > b ? a : b);
+      _startSeconds = widget.clipBoundarySeconds[minIndex];
+      _endSeconds = widget.clipBoundarySeconds[maxIndex + 1];
+    });
   }
 
   @override
@@ -361,39 +410,27 @@ class _TextOverlayFormSheetState extends State<TextOverlayFormSheet> {
                   ),
                 ],
               ),
-              const SizedBox(height: 16),
-              Row(
-                mainAxisAlignment: MainAxisAlignment.spaceBetween,
-                children: [
-                  Text(
-                    '表示するタイミング',
-                    style: Theme.of(context).textTheme.labelLarge,
+              if (widget.showClipPicker &&
+                  widget.clipBoundarySeconds.length > 1) ...[
+                const SizedBox(height: 16),
+                Text('表示するクリップ', style: Theme.of(context).textTheme.labelLarge),
+                Text(
+                  '複数選ぶと、その間はずっと表示されます。',
+                  style: Theme.of(context).textTheme.bodySmall,
+                ),
+                for (var i = 0; i < widget.clipBoundarySeconds.length - 1; i++)
+                  CheckboxListTile(
+                    contentPadding: EdgeInsets.zero,
+                    dense: true,
+                    title: Text(
+                      'クリップ${i + 1} '
+                      '(${formatSeconds(widget.clipBoundarySeconds[i])}〜'
+                      '${formatSeconds(widget.clipBoundarySeconds[i + 1])})',
+                    ),
+                    value: _selectedClipIndices.contains(i),
+                    onChanged: (_) => _toggleClip(i),
                   ),
-                  Text(
-                    '${formatSeconds(_startSeconds)} 〜 ${formatSeconds(_endSeconds)}',
-                    style: Theme.of(context).textTheme.bodyMedium,
-                  ),
-                ],
-              ),
-              Text(
-                '縦の点線はクリップの区切りです。ドラッグして自由に表示区間を決められます。',
-                style: Theme.of(context).textTheme.bodySmall,
-              ),
-              _TimelineTicks(
-                totalSeconds: widget.totalSeconds,
-                boundarySeconds: widget.clipBoundarySeconds,
-              ),
-              RangeSlider(
-                values: RangeValues(_startSeconds, _endSeconds),
-                min: 0,
-                max: widget.totalSeconds > 0 ? widget.totalSeconds : 1,
-                onChanged: widget.totalSeconds <= 0
-                    ? null
-                    : (values) => setState(() {
-                        _startSeconds = values.start;
-                        _endSeconds = values.end;
-                      }),
-              ),
+              ],
               const SizedBox(height: 24),
               Row(
                 mainAxisAlignment: MainAxisAlignment.end,
@@ -409,53 +446,6 @@ class _TextOverlayFormSheetState extends State<TextOverlayFormSheet> {
             ],
           ),
         ),
-      ),
-    );
-  }
-}
-
-/// Thin vertical tick marks at each clip boundary, roughly aligned above a
-/// [RangeSlider]'s track (Material centers the track within the slider's
-/// full width, inset by its thumb radius on each side).
-class _TimelineTicks extends StatelessWidget {
-  const _TimelineTicks({
-    required this.totalSeconds,
-    required this.boundarySeconds,
-  });
-
-  final double totalSeconds;
-  final List<double> boundarySeconds;
-
-  static const _horizontalInset = 16.0;
-
-  @override
-  Widget build(BuildContext context) {
-    if (totalSeconds <= 0) return const SizedBox(height: 12);
-    return SizedBox(
-      height: 12,
-      child: LayoutBuilder(
-        builder: (context, constraints) {
-          final trackWidth = (constraints.maxWidth - _horizontalInset * 2)
-              .clamp(0.0, double.infinity);
-          return Stack(
-            children: [
-              for (final boundary in boundarySeconds)
-                if (boundary > 0 && boundary < totalSeconds)
-                  Positioned(
-                    left:
-                        _horizontalInset +
-                        (boundary / totalSeconds) * trackWidth -
-                        0.5,
-                    top: 0,
-                    child: Container(
-                      width: 1,
-                      height: 10,
-                      color: Theme.of(context).colorScheme.outlineVariant,
-                    ),
-                  ),
-            ],
-          );
-        },
       ),
     );
   }

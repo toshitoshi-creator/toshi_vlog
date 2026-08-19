@@ -81,6 +81,7 @@ class _HighlightScreenState extends State<HighlightScreen> {
         ),
         totalSeconds: totalSeconds,
         clipBoundarySeconds: [for (final s in starts) s.inMilliseconds / 1000],
+        showClipPicker: true,
       ),
     );
     if (result == null || result.text.trim().isEmpty) return;
@@ -99,6 +100,7 @@ class _HighlightScreenState extends State<HighlightScreen> {
         initial: overlay,
         totalSeconds: totalSeconds,
         clipBoundarySeconds: [for (final s in starts) s.inMilliseconds / 1000],
+        showClipPicker: true,
         onDelete: () => reel.removeTextOverlay(overlay.id),
       ),
     );
