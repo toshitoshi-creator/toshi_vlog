@@ -70,15 +70,27 @@ class _EditScreenState extends State<EditScreen> {
   double _liveX = 0;
   double _liveY = 0;
 
+  /// Segment ids as of the last [_onReelChanged]/selection — clips never
+  /// change from a plain caption edit, so a change here means the reel's
+  /// whole content was replaced out from under us (e.g. 簡易編集's
+  /// "編集タブにコピー"), which should drop any stale caption selection
+  /// too instead of leaving an unrelated caption stuck force-visible.
+  List<String> _lastSegmentIds = [];
+
   @override
   void initState() {
     super.initState();
     _activeReel = widget.compilationLibrary.currentEdit;
+    _lastSegmentIds = _segmentIdsOf(_activeReel);
     widget.compilationLibrary.addListener(_onLibraryChanged);
     _activeReel.addListener(_onReelChanged);
     _syncFromReel();
     _loadPreview();
   }
+
+  List<String> _segmentIdsOf(HighlightReel reel) => [
+    for (final s in reel.segments) s.id,
+  ];
 
   @override
   void dispose() {
@@ -119,11 +131,23 @@ class _EditScreenState extends State<EditScreen> {
 
   void _onReelChanged() {
     if (!mounted) return;
+    final newSegmentIds = _segmentIdsOf(_activeReel);
+    final replaced = !_listEquals(newSegmentIds, _lastSegmentIds);
+    _lastSegmentIds = newSegmentIds;
+    if (replaced) _selectedCaptionId = null;
     _syncFromReel();
     if (_activeReel.revision != _previewRevision) {
       _loadPreview(preservePosition: true);
     }
     setState(() {});
+  }
+
+  bool _listEquals(List<String> a, List<String> b) {
+    if (a.length != b.length) return false;
+    for (var i = 0; i < a.length; i++) {
+      if (a[i] != b[i]) return false;
+    }
+    return true;
   }
 
   void _syncFromReel() {
@@ -145,6 +169,8 @@ class _EditScreenState extends State<EditScreen> {
     if (!mounted) return;
     _activeReel.removeListener(_onReelChanged);
     reel.addListener(_onReelChanged);
+    _lastSegmentIds = _segmentIdsOf(reel);
+    _selectedCaptionId = null;
     setState(() {
       _activeReel = reel;
       _loadingSelection = false;
