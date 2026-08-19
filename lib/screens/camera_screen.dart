@@ -219,6 +219,13 @@ class _CameraScreenState extends State<CameraScreen>
         ),
       );
 
+      // RecordingPreviewScreen plays the clip back with video_player,
+      // which on iOS can leave the shared audio session configured for
+      // playback rather than recording — the next startVideoRecording()
+      // call then fails outright, no matter how long we wait. Reclaim it
+      // by reinitializing the camera controller before recording again.
+      if (mounted) await _reinitializeCurrentCamera();
+
       if (shouldSave == true) {
         final savedFile = await widget.videoLibrary.store(recorded.path);
         // Trims the first second into the highlight reel in the background;

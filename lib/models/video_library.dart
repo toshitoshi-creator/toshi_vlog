@@ -32,11 +32,9 @@ class VideoLibrary extends ChangeNotifier {
     for (final file in files) {
       final stat = await file.stat();
       final duration = await _readDuration(file);
-      items.add(VideoItem(
-        file: file,
-        createdAt: stat.modified,
-        duration: duration,
-      ));
+      items.add(
+        VideoItem(file: file, createdAt: stat.modified, duration: duration),
+      );
     }
     items.sort((a, b) => b.createdAt.compareTo(a.createdAt));
     _videos = items;
@@ -66,10 +64,17 @@ class VideoLibrary extends ChangeNotifier {
     return destination;
   }
 
+  /// Removes [item] from [videos] synchronously before doing the actual
+  /// (async) file deletion — a Dismissible expects the widget backed by its
+  /// key to be gone from the tree by the time its dismiss animation
+  /// finishes, and waiting on file I/O first made that rebuild land too
+  /// late, throwing "A dismissed Dismissible widget is still part of the
+  /// tree".
   Future<void> delete(VideoItem item) async {
+    _videos = _videos.where((v) => v.file.path != item.file.path).toList();
+    notifyListeners();
     if (await item.file.exists()) {
       await item.file.delete();
     }
-    await reload();
   }
 }
