@@ -14,6 +14,7 @@ import '../models/text_overlay.dart';
 import '../models/video_library.dart';
 import '../utils/download_video.dart';
 import '../utils/text_overlay_renderer.dart';
+import '../widgets/clip_trim_sheet.dart';
 import '../widgets/date_template_sheet.dart';
 import '../widgets/export_settings_sheet.dart';
 import '../widgets/text_overlay_form_sheet.dart';
@@ -415,6 +416,14 @@ class _EditScreenState extends State<EditScreen> {
     );
   }
 
+  Future<void> _handleEditClipTiming(int index) async {
+    await showModalBottomSheet<void>(
+      context: context,
+      isScrollControlled: true,
+      builder: (_) => ClipTrimSheet(reel: _activeReel, index: index),
+    );
+  }
+
   void _beginGesture(TextOverlay overlay) {
     _activeOverlayId = overlay.id;
     _gestureStartFontSize = overlay.fontSize;
@@ -739,6 +748,7 @@ class _EditScreenState extends State<EditScreen> {
                   onCommitCaptionTiming: _handleCommitCaptionTiming,
                   onAddText: _handleAddTextPressed,
                   onEditFraming: _handleEditFraming,
+                  onEditClipTiming: _handleEditClipTiming,
                   onDeselectAll: _handleDeselectAll,
                   onCommitBgmTiming: (start, end) =>
                       reel.setBgmTiming(start, end),

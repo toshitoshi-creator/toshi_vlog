@@ -403,6 +403,7 @@ class HighlightReel extends ChangeNotifier {
         createdAt: DateTime.now(),
         startOffset: startOffset,
         duration: actualDuration,
+        trimModeUsed: _trimMode,
       ),
     ];
     await _persistManifest();
@@ -439,6 +440,7 @@ class HighlightReel extends ChangeNotifier {
             redoCount: nextRedoCount,
             startOffset: startOffset,
             duration: actualDuration,
+            trimModeUsed: _trimMode,
           )
         else
           s,
@@ -1248,6 +1250,7 @@ class HighlightReel extends ChangeNotifier {
           frameRotationDegrees: segment.frameRotationDegrees,
           frameScale: segment.frameScale,
           volume: segment.volume,
+          trimModeUsed: segment.trimModeUsed,
         ),
       );
     }

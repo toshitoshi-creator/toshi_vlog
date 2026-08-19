@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/app_font.dart';
 import '../models/compilation_library.dart';
 import '../models/download_quota.dart';
+import '../models/redo_quota.dart';
 import '../models/sound_library.dart';
 import '../models/subscription_service.dart';
 import '../models/text_overlay.dart';
@@ -19,6 +20,7 @@ class HighlightScreen extends StatefulWidget {
     required this.compilationLibrary,
     required this.subscriptionService,
     required this.downloadQuota,
+    required this.redoQuota,
     required this.soundLibrary,
     required this.videoLibrary,
   });
@@ -26,6 +28,7 @@ class HighlightScreen extends StatefulWidget {
   final CompilationLibrary compilationLibrary;
   final SubscriptionService subscriptionService;
   final DownloadQuota downloadQuota;
+  final RedoQuota redoQuota;
   final SoundLibrary soundLibrary;
   final VideoLibrary videoLibrary;
 
@@ -212,6 +215,7 @@ class _HighlightScreenState extends State<HighlightScreen> {
           ClipManagementSection(
             reel: reel,
             subscriptionService: widget.subscriptionService,
+            redoQuota: widget.redoQuota,
           ),
           const Divider(height: 1),
           if (reel.bgmFile != null)

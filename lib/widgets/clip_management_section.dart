@@ -1,7 +1,9 @@
 import 'package:flutter/material.dart';
 
 import '../models/clip_trim_mode.dart';
+import '../models/download_quota.dart';
 import '../models/highlight_reel.dart';
+import '../models/redo_quota.dart';
 import '../models/subscription_service.dart';
 import '../screens/paywall_screen.dart';
 import 'video_thumbnail.dart';
@@ -14,10 +16,12 @@ class ClipManagementSection extends StatelessWidget {
     super.key,
     required this.reel,
     required this.subscriptionService,
+    required this.redoQuota,
   });
 
   final HighlightReel reel;
   final SubscriptionService subscriptionService;
+  final RedoQuota redoQuota;
 
   void _openPaywall(BuildContext context) {
     Navigator.of(context).push(
@@ -28,12 +32,23 @@ class ClipManagementSection extends StatelessWidget {
   }
 
   void _handleRedo(BuildContext context, int index) {
-    if (!subscriptionService.isPremium) {
+    final canRedo =
+        subscriptionService.isPremium || redoQuota.remainingFreeRedos > 0;
+    if (!canRedo) {
       _openPaywall(context);
       return;
     }
     reel.redo(index);
+    if (!subscriptionService.isPremium) {
+      redoQuota.recordRedo();
+    }
   }
+
+  String _trimModeShortLabel(ClipTrimMode mode) => switch (mode) {
+    ClipTrimMode.start => '先頭',
+    ClipTrimMode.loudest => '盛り上がり',
+    ClipTrimMode.random => 'ランダム',
+  };
 
   @override
   Widget build(BuildContext context) {
@@ -77,8 +92,9 @@ class ClipManagementSection extends StatelessWidget {
           child: Text(
             '撮影した動画から選んだ方式・長さで切り取られ、ここに追加されます'
             '(切り替えは以降撮影分から適用されます)。並び替えや削除で手動編集できます。'
-            'ランダム・盛り上がりのクリップの作り直しと、1日4回目以降のダウンロードは'
-            'プレミアム登録で解除されます。',
+            'ランダム・盛り上がりのクリップの作り直しは1日${RedoQuota.freeRedosPerDay}回、'
+            'ダウンロードは1日${DownloadQuota.freeDownloadsPerDay}回まで無料'
+            '(それ以降はプレミアム登録で解除されます)。',
             style: Theme.of(context).textTheme.bodySmall,
           ),
         ),
@@ -97,10 +113,20 @@ class ClipManagementSection extends StatelessWidget {
             },
             itemBuilder: (context, index) {
               final segment = reel.segments[index];
+              final durationLabel =
+                  '${(segment.duration.inMilliseconds / 1000).toStringAsFixed(1)}秒';
+              final modeLabel = segment.trimModeUsed != null
+                  ? _trimModeShortLabel(segment.trimModeUsed!)
+                  : null;
               return ListTile(
                 key: ValueKey(segment.id),
                 leading: VideoThumbnail(file: segment.file),
                 title: Text('${index + 1}番目'),
+                subtitle: Text(
+                  modeLabel != null
+                      ? '$modeLabel・$durationLabel'
+                      : durationLabel,
+                ),
                 trailing: Row(
                   mainAxisSize: MainAxisSize.min,
                   children: [

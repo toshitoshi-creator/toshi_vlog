@@ -1,5 +1,7 @@
 import 'dart:io';
 
+import 'clip_trim_mode.dart';
+
 class HighlightSegment {
   const HighlightSegment({
     required this.id,
@@ -12,6 +14,7 @@ class HighlightSegment {
     this.frameRotationDegrees = 0,
     this.frameScale = 1,
     this.volume = 1,
+    this.trimModeUsed,
   });
 
   final String id;
@@ -43,6 +46,13 @@ class HighlightSegment {
   /// multiplier on top).
   final double volume;
 
+  /// Which [ClipTrimMode] was active when this segment was last cut from
+  /// its source (initial add or a [HighlightReel.redo]) — shown in the clip
+  /// list so it's clear how each clip came to be, even after the reel's
+  /// current trim mode has since moved on. Null for segments predating this
+  /// field.
+  final ClipTrimMode? trimModeUsed;
+
   HighlightSegment copyWith({
     File? file,
     Duration? startOffset,
@@ -51,6 +61,7 @@ class HighlightSegment {
     double? frameRotationDegrees,
     double? frameScale,
     double? volume,
+    ClipTrimMode? trimModeUsed,
   }) => HighlightSegment(
     id: id,
     file: file ?? this.file,
@@ -62,6 +73,7 @@ class HighlightSegment {
     frameRotationDegrees: frameRotationDegrees ?? this.frameRotationDegrees,
     frameScale: frameScale ?? this.frameScale,
     volume: volume ?? this.volume,
+    trimModeUsed: trimModeUsed ?? this.trimModeUsed,
   );
 
   Map<String, dynamic> toJson() => {
@@ -75,6 +87,7 @@ class HighlightSegment {
     'frameRotationDegrees': frameRotationDegrees,
     'frameScale': frameScale,
     'volume': volume,
+    'trimModeUsed': trimModeUsed?.name,
   };
 
   factory HighlightSegment.fromJson(Map<String, dynamic> json) {
@@ -90,6 +103,9 @@ class HighlightSegment {
           (json['frameRotationDegrees'] as num?)?.toDouble() ?? 0,
       frameScale: (json['frameScale'] as num?)?.toDouble() ?? 1,
       volume: (json['volume'] as num?)?.toDouble() ?? 1,
+      trimModeUsed: ClipTrimMode.values
+          .where((m) => m.name == json['trimModeUsed'])
+          .firstOrNull,
     );
   }
 }

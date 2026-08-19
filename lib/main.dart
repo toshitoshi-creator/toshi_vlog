@@ -3,6 +3,7 @@ import 'package:intl/date_symbol_data_local.dart';
 
 import 'models/compilation_library.dart';
 import 'models/download_quota.dart';
+import 'models/redo_quota.dart';
 import 'models/sound_library.dart';
 import 'models/subscription_service.dart';
 import 'models/video_library.dart';
@@ -45,6 +46,7 @@ class _RootScreenState extends State<RootScreen> {
   final CompilationLibrary _compilationLibrary = CompilationLibrary();
   final SubscriptionService _subscriptionService = SubscriptionService();
   final DownloadQuota _downloadQuota = DownloadQuota();
+  final RedoQuota _redoQuota = RedoQuota();
   final SoundLibrary _soundLibrary = SoundLibrary();
   int _currentIndex = 0;
 
@@ -59,6 +61,7 @@ class _RootScreenState extends State<RootScreen> {
     _compilationLibrary.load();
     _subscriptionService.init();
     _downloadQuota.load();
+    _redoQuota.load();
     _soundLibrary.load();
   }
 
@@ -68,6 +71,7 @@ class _RootScreenState extends State<RootScreen> {
     _compilationLibrary.dispose();
     _subscriptionService.dispose();
     _downloadQuota.dispose();
+    _redoQuota.dispose();
     _soundLibrary.dispose();
     super.dispose();
   }
@@ -83,6 +87,7 @@ class _RootScreenState extends State<RootScreen> {
         compilationLibrary: _compilationLibrary,
         subscriptionService: _subscriptionService,
         downloadQuota: _downloadQuota,
+        redoQuota: _redoQuota,
         soundLibrary: _soundLibrary,
         videoLibrary: _videoLibrary,
       ),

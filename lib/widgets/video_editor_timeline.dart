@@ -30,6 +30,7 @@ class VideoEditorTimeline extends StatefulWidget {
     required this.onCommitCaptionTiming,
     required this.onAddText,
     required this.onEditFraming,
+    required this.onEditClipTiming,
     required this.onDeselectAll,
     required this.onCommitBgmTiming,
   });
@@ -70,6 +71,11 @@ class VideoEditorTimeline extends StatefulWidget {
   /// fired by the toolbar's crop/rotate icon, enabled only when a clip is
   /// selected.
   final ValueChanged<int> onEditFraming;
+
+  /// Opens a numeric seconds-based alternative to dragging the clip's edges
+  /// — fired by the toolbar's ruler icon, enabled only when a clip is
+  /// selected.
+  final ValueChanged<int> onEditClipTiming;
 
   /// Fired when tapping empty space in the timeline (not a clip block or
   /// caption bar) — clears the caption selection the parent owns; clip
@@ -583,6 +589,14 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
                 onPressed: _selectedClipIndex == null
                     ? null
                     : () => widget.onEditFraming(_selectedClipIndex!),
+                visualDensity: VisualDensity.compact,
+              ),
+              IconButton(
+                icon: const Icon(Icons.straighten),
+                tooltip: '秒数調整',
+                onPressed: _selectedClipIndex == null
+                    ? null
+                    : () => widget.onEditClipTiming(_selectedClipIndex!),
                 visualDensity: VisualDensity.compact,
               ),
             ],
