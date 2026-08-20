@@ -36,9 +36,18 @@ class _ClipFramingScreenState extends State<ClipFramingScreen> {
   @override
   void initState() {
     super.initState();
-    _rotation = widget.segment.frameRotationDegrees;
+    _rotation = _normalizeRotation(widget.segment.frameRotationDegrees);
     _scale = widget.segment.frameScale;
     _loadPreview();
+  }
+
+  /// Folds any angle into the rotation slider's [-180, 180] range — mainly
+  /// a defensive normalization for data that might predate [_rotate90]'s
+  /// fix, so the slider below never gets built with an out-of-range value.
+  double _normalizeRotation(double degrees) {
+    var d = degrees % 360;
+    if (d > 180) d -= 360;
+    return d;
   }
 
   Future<void> _loadPreview() async {
@@ -76,7 +85,16 @@ class _ClipFramingScreenState extends State<ClipFramingScreen> {
   }
 
   void _rotate90() {
-    setState(() => _rotation = (_rotation + 90) % 360);
+    setState(() {
+      // The rotation slider below is bounded to [-180, 180], so the result
+      // needs folding back into that range rather than just wrapping into
+      // Dart's (always non-negative) [0, 360) modulo result — e.g. from
+      // -180, a naive (_rotation + 90) % 360 lands on 270, which the
+      // slider then rejects as out of range.
+      var next = (_rotation + 90) % 360;
+      if (next > 180) next -= 360;
+      _rotation = next;
+    });
   }
 
   void _reset() {
@@ -92,10 +110,7 @@ class _ClipFramingScreenState extends State<ClipFramingScreen> {
       appBar: AppBar(
         title: const Text('画角編集'),
         actions: [
-          TextButton(
-            onPressed: _reset,
-            child: const Text('リセット'),
-          ),
+          TextButton(onPressed: _reset, child: const Text('リセット')),
           IconButton(
             icon: _isSaving
                 ? const SizedBox(
@@ -120,7 +135,8 @@ class _ClipFramingScreenState extends State<ClipFramingScreen> {
                   child: ClipRect(
                     child: Container(
                       color: Colors.black,
-                      child: _controller != null &&
+                      child:
+                          _controller != null &&
                               _controller!.value.isInitialized
                           ? Transform.rotate(
                               angle: _rotation * 3.1415926535 / 180,
@@ -183,7 +199,10 @@ class _ClipFramingScreenState extends State<ClipFramingScreen> {
                   ),
                   Row(
                     children: [
-                      Text('拡大縮小', style: Theme.of(context).textTheme.labelLarge),
+                      Text(
+                        '拡大縮小',
+                        style: Theme.of(context).textTheme.labelLarge,
+                      ),
                       const Spacer(),
                       Text('${_scale.toStringAsFixed(2)}x'),
                     ],
