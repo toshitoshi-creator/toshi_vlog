@@ -25,9 +25,9 @@ Future<WatermarkImage> renderWatermarkPng() async {
 
   final textStyle = TextStyle(
     fontSize: fontSize,
-    color: const Color(0xE6FFFFFF),
+    color: const Color(0x59FFFFFF),
     fontWeight: FontWeight.w600,
-    shadows: const [Shadow(blurRadius: 5, color: Color(0xB3000000))],
+    shadows: const [Shadow(blurRadius: 5, color: Color(0x4D000000))],
   );
   final painter = TextPainter(
     text: TextSpan(text: text, style: textStyle),
