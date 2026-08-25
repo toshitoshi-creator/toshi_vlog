@@ -18,6 +18,10 @@ class MediaScreen extends StatefulWidget {
 class _MediaScreenState extends State<MediaScreen> {
   DateTime? _selectedDate;
 
+  /// Whether the list is showing per-item checkboxes for bulk delete.
+  bool _isSelecting = false;
+  final Set<String> _selectedPaths = {};
+
   @override
   void initState() {
     super.initState();
@@ -35,10 +39,87 @@ class _MediaScreenState extends State<MediaScreen> {
     if (mounted) setState(() {});
   }
 
+  void _toggleSelectionMode() {
+    setState(() {
+      _isSelecting = !_isSelecting;
+      _selectedPaths.clear();
+    });
+  }
+
+  void _toggleSelected(VideoItem video) {
+    setState(() {
+      if (!_selectedPaths.remove(video.file.path)) {
+        _selectedPaths.add(video.file.path);
+      }
+    });
+  }
+
+  /// Shows a confirmation dialog for [items], and only actually deletes if
+  /// the user taps 削除 — used by all three bulk-delete entry points
+  /// (selection, day, month), which are all destructive and irreversible.
+  Future<void> _confirmAndDelete(List<VideoItem> items, String message) async {
+    if (items.isEmpty) return;
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('削除しますか?'),
+        content: Text(message),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('削除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await widget.videoLibrary.deleteAll(items);
+    if (mounted) {
+      setState(() {
+        _isSelecting = false;
+        _selectedPaths.clear();
+      });
+    }
+  }
+
+  Future<void> _handleDeleteSelected() async {
+    final items = widget.videoLibrary.videos
+        .where((v) => _selectedPaths.contains(v.file.path))
+        .toList();
+    await _confirmAndDelete(
+      items,
+      '選択した${items.length}件の動画を削除します。この操作は取り消せません。',
+    );
+  }
+
+  Future<void> _handleDeleteDay(DateTime day, List<VideoItem> videosForDay) {
+    return _confirmAndDelete(
+      videosForDay,
+      '${DateFormat('yyyy/MM/dd').format(day)}の動画'
+      '(${videosForDay.length}件)をすべて削除します。この操作は取り消せません。',
+    );
+  }
+
+  Future<void> _handleDeleteMonth(DateTime day) {
+    final items = widget.videoLibrary.videos
+        .where(
+          (v) => v.createdAt.year == day.year && v.createdAt.month == day.month,
+        )
+        .toList();
+    return _confirmAndDelete(
+      items,
+      '${DateFormat('yyyy年M月').format(day)}の動画'
+      '(${items.length}件)をすべて削除します。この操作は取り消せません。',
+    );
+  }
+
   List<DateTime> get _availableDates {
-    final days =
-        widget.videoLibrary.videos.map(_dayOf).toSet().toList()
-          ..sort();
+    final days = widget.videoLibrary.videos.map(_dayOf).toSet().toList()
+      ..sort();
     return days;
   }
 
@@ -61,7 +142,50 @@ class _MediaScreenState extends State<MediaScreen> {
               .toList();
 
     return Scaffold(
-      appBar: AppBar(title: const Text('メディア')),
+      appBar: AppBar(
+        title: _isSelecting
+            ? Text('${_selectedPaths.length}件選択中')
+            : const Text('メディア'),
+        leading: _isSelecting
+            ? IconButton(
+                icon: const Icon(Icons.close),
+                tooltip: '選択を終了',
+                onPressed: _toggleSelectionMode,
+              )
+            : null,
+        actions: _isSelecting
+            ? [
+                IconButton(
+                  icon: const Icon(Icons.delete_outline),
+                  tooltip: '選択した動画を削除',
+                  onPressed: _selectedPaths.isEmpty
+                      ? null
+                      : _handleDeleteSelected,
+                ),
+              ]
+            : [
+                IconButton(
+                  icon: const Icon(Icons.checklist),
+                  tooltip: '複数選択して削除',
+                  onPressed: dates.isEmpty ? null : _toggleSelectionMode,
+                ),
+                PopupMenuButton<String>(
+                  enabled: selected != null,
+                  tooltip: 'まとめて削除',
+                  onSelected: (value) {
+                    if (value == 'day') {
+                      _handleDeleteDay(selected!, videosForDay);
+                    } else if (value == 'month') {
+                      _handleDeleteMonth(selected!);
+                    }
+                  },
+                  itemBuilder: (context) => const [
+                    PopupMenuItem(value: 'day', child: Text('この日の動画をすべて削除')),
+                    PopupMenuItem(value: 'month', child: Text('この月の動画をすべて削除')),
+                  ],
+                ),
+              ],
+      ),
       body: RefreshIndicator(
         onRefresh: widget.videoLibrary.reload,
         child: Column(
@@ -98,6 +222,38 @@ class _MediaScreenState extends State<MediaScreen> {
                       itemCount: videosForDay.length,
                       itemBuilder: (context, index) {
                         final video = videosForDay[index];
+                        final isSelected = _selectedPaths.contains(
+                          video.file.path,
+                        );
+                        final tile = ListTile(
+                          leading: VideoThumbnail(file: video.file),
+                          title: Text(
+                            DateFormat('HH:mm').format(video.createdAt),
+                          ),
+                          subtitle: Text(_formatDuration(video.duration)),
+                          selected: isSelected,
+                          trailing: _isSelecting
+                              ? Checkbox(
+                                  value: isSelected,
+                                  onChanged: (_) => _toggleSelected(video),
+                                )
+                              : null,
+                          onTap: _isSelecting
+                              ? () => _toggleSelected(video)
+                              : () {
+                                  Navigator.of(context).push(
+                                    MaterialPageRoute(
+                                      builder: (_) => VideoPlayerScreen(
+                                        file: video.file,
+                                        title: DateFormat(
+                                          'yyyy/MM/dd HH:mm',
+                                        ).format(video.createdAt),
+                                      ),
+                                    ),
+                                  );
+                                },
+                        );
+                        if (_isSelecting) return tile;
                         return Dismissible(
                           key: ValueKey(video.file.path),
                           direction: DismissDirection.endToStart,
@@ -105,26 +261,13 @@ class _MediaScreenState extends State<MediaScreen> {
                             color: Colors.red,
                             alignment: Alignment.centerRight,
                             padding: const EdgeInsets.symmetric(horizontal: 20),
-                            child: const Icon(Icons.delete, color: Colors.white),
+                            child: const Icon(
+                              Icons.delete,
+                              color: Colors.white,
+                            ),
                           ),
                           onDismissed: (_) => widget.videoLibrary.delete(video),
-                          child: ListTile(
-                            leading: VideoThumbnail(file: video.file),
-                            title: Text(DateFormat('HH:mm').format(video.createdAt)),
-                            subtitle: Text(_formatDuration(video.duration)),
-                            onTap: () {
-                              Navigator.of(context).push(
-                                MaterialPageRoute(
-                                  builder: (_) => VideoPlayerScreen(
-                                    file: video.file,
-                                    title: DateFormat(
-                                      'yyyy/MM/dd HH:mm',
-                                    ).format(video.createdAt),
-                                  ),
-                                ),
-                              );
-                            },
-                          ),
+                          child: tile,
                         );
                       },
                     ),

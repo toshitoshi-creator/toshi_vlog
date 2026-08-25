@@ -77,4 +77,18 @@ class VideoLibrary extends ChangeNotifier {
       await item.file.delete();
     }
   }
+
+  /// Same synchronous-list-removal-first approach as [delete], batched for
+  /// multi-select/bulk (day, month) deletion from the メディア tab.
+  Future<void> deleteAll(List<VideoItem> items) async {
+    if (items.isEmpty) return;
+    final paths = items.map((item) => item.file.path).toSet();
+    _videos = _videos.where((v) => !paths.contains(v.file.path)).toList();
+    notifyListeners();
+    for (final item in items) {
+      if (await item.file.exists()) {
+        await item.file.delete();
+      }
+    }
+  }
 }
