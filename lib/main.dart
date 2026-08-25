@@ -92,6 +92,7 @@ class _RootScreenState extends State<RootScreen> {
         subscriptionService: _subscriptionService,
         downloadQuota: _downloadQuota,
         redoQuota: _redoQuota,
+        rewardedAdService: _rewardedAdService,
         soundLibrary: _soundLibrary,
         videoLibrary: _videoLibrary,
       ),

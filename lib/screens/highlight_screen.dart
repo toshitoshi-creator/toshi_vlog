@@ -4,6 +4,7 @@ import '../models/app_font.dart';
 import '../models/compilation_library.dart';
 import '../models/download_quota.dart';
 import '../models/redo_quota.dart';
+import '../models/rewarded_ad_service.dart';
 import '../models/sound_library.dart';
 import '../models/subscription_service.dart';
 import '../models/text_overlay.dart';
@@ -21,6 +22,7 @@ class HighlightScreen extends StatefulWidget {
     required this.subscriptionService,
     required this.downloadQuota,
     required this.redoQuota,
+    required this.rewardedAdService,
     required this.soundLibrary,
     required this.videoLibrary,
   });
@@ -29,6 +31,7 @@ class HighlightScreen extends StatefulWidget {
   final SubscriptionService subscriptionService;
   final DownloadQuota downloadQuota;
   final RedoQuota redoQuota;
+  final RewardedAdService rewardedAdService;
   final SoundLibrary soundLibrary;
   final VideoLibrary videoLibrary;
 
@@ -209,6 +212,7 @@ class _HighlightScreenState extends State<HighlightScreen> {
               reel: reel,
               subscriptionService: widget.subscriptionService,
               downloadQuota: widget.downloadQuota,
+              rewardedAdService: widget.rewardedAdService,
             ),
           ),
           const Divider(height: 1),
