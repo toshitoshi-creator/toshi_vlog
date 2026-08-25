@@ -73,6 +73,15 @@ class HighlightReel extends ChangeNotifier {
   bool _includeOpening = false;
   static const minClipsForOpening = 4;
 
+  /// Whether 簡易編集's daily auto-clear (see [applyDailyAutoClear]) is
+  /// allowed to skip clearing this reel. Only actually takes effect for a
+  /// premium user — a lapsed subscription falls back to the default
+  /// (always clears) regardless of this stored value. Irrelevant to any
+  /// reel other than `current`, which is the only one auto-clear ever runs
+  /// against.
+  bool _autoClearEnabled = true;
+  static const _autoClearAfter = Duration(hours: 24);
+
   /// Bumped every time [_recompose] actually rewrites [compiledFile]'s
   /// contents. The output path never changes between recompositions, so
   /// callers that cache a player/controller for [compiledFile] should
@@ -92,6 +101,7 @@ class HighlightReel extends ChangeNotifier {
   double get videoVolume => _videoVolume;
   double get bgmStartSeconds => _bgmStartSeconds;
   double? get bgmEndSeconds => _bgmEndSeconds;
+  bool get autoClearEnabled => _autoClearEnabled;
 
   /// The video's current total duration in seconds, used to resolve a null
   /// [bgmEndSeconds] (BGM plays to the end) to a concrete value for display.
@@ -216,6 +226,7 @@ class HighlightReel extends ChangeNotifier {
         );
         _exportFps = raw['exportFps'] as int? ?? 30;
         _includeOpening = raw['includeOpening'] as bool? ?? false;
+        _autoClearEnabled = raw['autoClearEnabled'] as bool? ?? true;
       } catch (_) {
         // Keep the defaults.
       }
@@ -318,6 +329,60 @@ class HighlightReel extends ChangeNotifier {
     await _recompose();
   }, 'オープニング設定の変更に失敗しました');
 
+  /// Premium-only in practice: [applyDailyAutoClear] only honors this when
+  /// the caller is currently premium, so a free user flipping it has no
+  /// effect (the UI is expected to gate this behind a paywall check
+  /// itself, same as export resolution/fps).
+  Future<void> setAutoClearEnabled(bool value) => _guarded(() async {
+    _autoClearEnabled = value;
+    await _persistSettings();
+  }, '自動削除設定の変更に失敗しました');
+
+  /// Resets this reel back to empty — clips, captions, and the BGM
+  /// selection are all cleared. Trim-mode/duration/export preferences are
+  /// left as-is. Used by [applyDailyAutoClear]; also just a plain manual
+  /// reset if called directly.
+  Future<void> clearContent() => _guarded(() async {
+    for (final segment in _segments) {
+      if (await segment.file.exists()) {
+        await segment.file.delete();
+      }
+    }
+    _segments = [];
+    for (final overlay in _textOverlays) {
+      final path = overlay.renderedImagePath;
+      if (path != null) {
+        final file = File(path);
+        if (await file.exists()) await file.delete();
+      }
+    }
+    _textOverlays = [];
+    _bgmFile = null;
+    _bgmTitle = null;
+    _bgmStartSeconds = 0;
+    _bgmEndSeconds = null;
+    await _persistManifest();
+    await _persistTextOverlays();
+    await _persistSettings();
+    await _recompose();
+  }, 'まとめ動画のリセットに失敗しました');
+
+  /// 簡易編集's "starts fresh after a day" policy: if this reel has clips
+  /// and the oldest of them was added more than 24 hours ago, clears it —
+  /// unless [isPremium] is true and the user has turned that off via
+  /// [setAutoClearEnabled]. Meant to be called once per app launch, after
+  /// this reel and the subscription state have both finished loading (see
+  /// main.dart). A no-op for an already-empty reel.
+  Future<void> applyDailyAutoClear({required bool isPremium}) async {
+    if (isPremium && !_autoClearEnabled) return;
+    if (_segments.isEmpty) return;
+    final oldest = _segments
+        .map((s) => s.createdAt)
+        .reduce((a, b) => a.isBefore(b) ? a : b);
+    if (DateTime.now().difference(oldest) < _autoClearAfter) return;
+    await clearContent();
+  }
+
   /// Adds a new caption or updates an existing one (matched by id).
   /// [overlay] must already have [TextOverlay.renderedImagePath] set to a
   /// PNG snapshot rendered by the editor.
@@ -365,6 +430,7 @@ class HighlightReel extends ChangeNotifier {
         'exportResolution': _exportResolution.name,
         'exportFps': _exportFps,
         'includeOpening': _includeOpening,
+        'autoClearEnabled': _autoClearEnabled,
       }),
     );
   }
@@ -1295,6 +1361,7 @@ class HighlightReel extends ChangeNotifier {
     target._exportResolution = _exportResolution;
     target._exportFps = _exportFps;
     target._includeOpening = _includeOpening;
+    target._autoClearEnabled = _autoClearEnabled;
 
     await target._persistManifest();
     await target._persistSettings();

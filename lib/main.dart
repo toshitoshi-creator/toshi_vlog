@@ -60,12 +60,25 @@ class _RootScreenState extends State<RootScreen> {
   @override
   void initState() {
     super.initState();
-    _compilationLibrary.load();
-    _subscriptionService.init();
+    _initCompilationAndSubscription();
     _downloadQuota.load();
     _redoQuota.load();
     _rewardedAdService.init();
     _soundLibrary.load();
+  }
+
+  /// 簡易編集's daily auto-clear (see [HighlightReel.applyDailyAutoClear])
+  /// needs both the reel's own clips and the subscription state loaded
+  /// first, so these two run together before it's applied — unlike the
+  /// other independent loads above, which don't depend on each other.
+  Future<void> _initCompilationAndSubscription() async {
+    await Future.wait([
+      _compilationLibrary.load(),
+      _subscriptionService.init(),
+    ]);
+    await _compilationLibrary.current.applyDailyAutoClear(
+      isPremium: _subscriptionService.isPremium,
+    );
   }
 
   @override

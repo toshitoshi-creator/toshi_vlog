@@ -3,6 +3,7 @@ import 'package:flutter/material.dart';
 import '../models/app_font.dart';
 import '../models/compilation_library.dart';
 import '../models/download_quota.dart';
+import '../models/highlight_reel.dart';
 import '../models/redo_quota.dart';
 import '../models/rewarded_ad_service.dart';
 import '../models/sound_library.dart';
@@ -13,6 +14,7 @@ import '../utils/text_overlay_renderer.dart';
 import '../widgets/clip_management_section.dart';
 import '../widgets/compiled_preview_section.dart';
 import '../widgets/text_overlay_form_sheet.dart';
+import 'paywall_screen.dart';
 import 'sound_library_screen.dart';
 
 class HighlightScreen extends StatefulWidget {
@@ -175,6 +177,16 @@ class _HighlightScreenState extends State<HighlightScreen> {
     ).showSnackBar(const SnackBar(content: Text('編集タブにコピーしました')));
   }
 
+  Future<void> _handleOpenAutoClearSettings() async {
+    await showModalBottomSheet<void>(
+      context: context,
+      builder: (_) => _AutoClearSettingsSheet(
+        reel: widget.compilationLibrary.current,
+        subscriptionService: widget.subscriptionService,
+      ),
+    );
+  }
+
   @override
   Widget build(BuildContext context) {
     final reel = widget.compilationLibrary.current;
@@ -188,6 +200,11 @@ class _HighlightScreenState extends State<HighlightScreen> {
             ),
             tooltip: reel.bgmTitle ?? 'BGMを選ぶ',
             onPressed: _handlePickBgm,
+          ),
+          IconButton(
+            icon: const Icon(Icons.auto_delete_outlined),
+            tooltip: '自動削除設定',
+            onPressed: _handleOpenAutoClearSettings,
           ),
           IconButton(
             icon: const Icon(Icons.arrow_circle_right_outlined),
@@ -296,6 +313,85 @@ class _HighlightScreenState extends State<HighlightScreen> {
               ),
           const SizedBox(height: 24),
         ],
+      ),
+    );
+  }
+}
+
+/// Bottom sheet for the AppBar's 自動削除設定 icon: explains 簡易編集's
+/// "starts fresh after a day" policy and, for premium users, lets it be
+/// turned off. Free users see the switch permanently on and locked —
+/// tapping it opens the paywall instead of actually toggling anything,
+/// same pattern as the export-resolution/fps gating in
+/// ExportSettingsSheet.
+class _AutoClearSettingsSheet extends StatefulWidget {
+  const _AutoClearSettingsSheet({
+    required this.reel,
+    required this.subscriptionService,
+  });
+
+  final HighlightReel reel;
+  final SubscriptionService subscriptionService;
+
+  @override
+  State<_AutoClearSettingsSheet> createState() =>
+      _AutoClearSettingsSheetState();
+}
+
+class _AutoClearSettingsSheetState extends State<_AutoClearSettingsSheet> {
+  Future<void> _openPaywall() async {
+    await Navigator.of(context).push(
+      MaterialPageRoute(
+        builder: (_) =>
+            PaywallScreen(subscriptionService: widget.subscriptionService),
+      ),
+    );
+  }
+
+  Future<void> _setEnabled(bool value) async {
+    if (!widget.subscriptionService.isPremium) {
+      await _openPaywall();
+      return;
+    }
+    await widget.reel.setAutoClearEnabled(value);
+    if (mounted) setState(() {});
+  }
+
+  @override
+  Widget build(BuildContext context) {
+    final isPremium = widget.subscriptionService.isPremium;
+    return SafeArea(
+      child: Padding(
+        padding: const EdgeInsets.all(16),
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          crossAxisAlignment: CrossAxisAlignment.start,
+          children: [
+            Text('自動削除設定', style: Theme.of(context).textTheme.titleMedium),
+            const SizedBox(height: 8),
+            Text(
+              '簡易編集は作成から1日経つと、クリップ・コメント・BGMが自動的に'
+              'リセットされます。プレミアム登録すると、この自動削除をオフに'
+              'できます。',
+              style: Theme.of(context).textTheme.bodySmall,
+            ),
+            SwitchListTile(
+              contentPadding: EdgeInsets.zero,
+              title: const Text('1日で自動削除する'),
+              secondary: isPremium ? null : const Icon(Icons.lock, size: 18),
+              value: !isPremium || widget.reel.autoClearEnabled,
+              onChanged: _setEnabled,
+            ),
+            const SizedBox(height: 8),
+            Align(
+              alignment: Alignment.centerRight,
+              child: FilledButton(
+                onPressed: () => Navigator.of(context).pop(),
+                child: const Text('閉じる'),
+              ),
+            ),
+          ],
+        ),
       ),
     );
   }
