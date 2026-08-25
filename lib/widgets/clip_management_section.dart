@@ -44,12 +44,6 @@ class ClipManagementSection extends StatelessWidget {
     }
   }
 
-  String _trimModeShortLabel(ClipTrimMode mode) => switch (mode) {
-    ClipTrimMode.start => '先頭',
-    ClipTrimMode.loudest => '盛り上がり',
-    ClipTrimMode.random => 'ランダム',
-  };
-
   @override
   Widget build(BuildContext context) {
     return Column(
@@ -115,9 +109,7 @@ class ClipManagementSection extends StatelessWidget {
               final segment = reel.segments[index];
               final durationLabel =
                   '${(segment.duration.inMilliseconds / 1000).toStringAsFixed(1)}秒';
-              final modeLabel = segment.trimModeUsed != null
-                  ? _trimModeShortLabel(segment.trimModeUsed!)
-                  : null;
+              final modeLabel = segment.trimModeUsed?.label;
               return ListTile(
                 key: ValueKey(segment.id),
                 leading: VideoThumbnail(file: segment.file),
