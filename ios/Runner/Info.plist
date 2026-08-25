@@ -24,6 +24,11 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- No custom/non-standard encryption (only HTTPS via plugins/IAP/ads),
+	     so this skips App Store Connect's export-compliance question on
+	     every single build upload. -->
+	<key>ITSAppUsesNonExemptEncryption</key>
+	<false/>
 	<!-- AdMob App ID. This is Google's public TEST App ID (shows only test
 	     ads, safe to ship, never generates real revenue) — replace with the
 	     real App ID from your own AdMob account before release. See
