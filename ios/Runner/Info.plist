@@ -24,6 +24,12 @@
 	<string>????</string>
 	<key>CFBundleVersion</key>
 	<string>$(FLUTTER_BUILD_NUMBER)</string>
+	<!-- AdMob App ID. This is Google's public TEST App ID (shows only test
+	     ads, safe to ship, never generates real revenue) — replace with the
+	     real App ID from your own AdMob account before release. See
+	     https://admob.google.com. -->
+	<key>GADApplicationIdentifier</key>
+	<string>ca-app-pub-3940256099942544~1458002511</string>
 	<key>LSRequiresIPhoneOS</key>
 	<true/>
 	<key>NSCameraUsageDescription</key>

@@ -8,6 +8,7 @@ import '../models/app_font.dart';
 import '../models/compilation_library.dart';
 import '../models/download_quota.dart';
 import '../models/highlight_reel.dart';
+import '../models/rewarded_ad_service.dart';
 import '../models/sound_library.dart';
 import '../models/subscription_service.dart';
 import '../models/text_overlay.dart';
@@ -23,6 +24,10 @@ import 'clip_framing_screen.dart';
 import 'paywall_screen.dart';
 import 'sound_library_screen.dart';
 
+/// What a non-premium user picked from [_EditScreenState._showQuotaExhaustedSheet]
+/// once today's free downloads are used up.
+enum _DownloadChoice { premium, watchAd }
+
 /// The Adobe Premiere-style advanced editor: video preview + multi-track
 /// timeline, no scrolling. Clip trim-mode/duration/basic reorder and simple
 /// text adding live in the まとめ tab (簡易編集) instead — this screen is
@@ -36,6 +41,7 @@ class EditScreen extends StatefulWidget {
     required this.videoLibrary,
     required this.subscriptionService,
     required this.downloadQuota,
+    required this.rewardedAdService,
   });
 
   final CompilationLibrary compilationLibrary;
@@ -43,6 +49,7 @@ class EditScreen extends StatefulWidget {
   final VideoLibrary videoLibrary;
   final SubscriptionService subscriptionService;
   final DownloadQuota downloadQuota;
+  final RewardedAdService rewardedAdService;
 
   @override
   State<EditScreen> createState() => _EditScreenState();
@@ -495,6 +502,43 @@ class _EditScreenState extends State<EditScreen> {
   Future<void> _handleDownload() async {
     final compiled = _activeReel.compiledFile;
     if (compiled == null) return;
+
+    // Non-premium: confirm before spending a free download, or — once
+    // today's free downloads are used up — offer premium or a rewarded ad
+    // as a way to unlock one more, instead of going straight to the
+    // paywall.
+    var bypassQuota = false;
+    if (!widget.subscriptionService.isPremium) {
+      final remaining = widget.downloadQuota.remainingFreeDownloads;
+      if (remaining > 0) {
+        final confirmed = await _confirmFreeDownload(remaining);
+        if (confirmed != true) return;
+      } else {
+        final choice = await _showQuotaExhaustedSheet();
+        if (choice == null) return;
+        if (choice == _DownloadChoice.premium) {
+          if (!mounted) return;
+          await Navigator.of(context).push(
+            MaterialPageRoute(
+              builder: (_) => PaywallScreen(
+                subscriptionService: widget.subscriptionService,
+              ),
+            ),
+          );
+          return;
+        }
+        final earned = await widget.rewardedAdService.showAd();
+        if (!mounted) return;
+        if (!earned) {
+          ScaffoldMessenger.of(context).showSnackBar(
+            const SnackBar(content: Text('広告を最後まで視聴すると1回ダウンロードできます')),
+          );
+          return;
+        }
+        bypassQuota = true;
+      }
+    }
+
     setState(() => _isDownloading = true);
 
     // Non-premium downloads from the 編集 tab get an "AOK Craft" watermark
@@ -520,8 +564,57 @@ class _EditScreenState extends State<EditScreen> {
       file: file,
       subscriptionService: widget.subscriptionService,
       downloadQuota: widget.downloadQuota,
+      bypassQuota: bypassQuota,
     );
     if (mounted) setState(() => _isDownloading = false);
+  }
+
+  Future<bool?> _confirmFreeDownload(int remaining) {
+    return showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('ダウンロードしますか?'),
+        content: Text('無料プランでは本日あと$remaining回ダウンロードできます。'),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('ダウンロード'),
+          ),
+        ],
+      ),
+    );
+  }
+
+  Future<_DownloadChoice?> _showQuotaExhaustedSheet() {
+    return showModalBottomSheet<_DownloadChoice>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: Column(
+          mainAxisSize: MainAxisSize.min,
+          children: [
+            const Padding(
+              padding: EdgeInsets.fromLTRB(16, 16, 16, 8),
+              child: Text('本日の無料ダウンロード回数を使い切りました'),
+            ),
+            ListTile(
+              leading: const Icon(Icons.workspace_premium),
+              title: const Text('プレミアムプランを見る'),
+              onTap: () => Navigator.of(context).pop(_DownloadChoice.premium),
+            ),
+            ListTile(
+              leading: const Icon(Icons.ondemand_video),
+              title: const Text('広告を見てダウンロード'),
+              onTap: () => Navigator.of(context).pop(_DownloadChoice.watchAd),
+            ),
+            const SizedBox(height: 8),
+          ],
+        ),
+      ),
+    );
   }
 
   /// Free まとめ動画 saves before a subscription is required.

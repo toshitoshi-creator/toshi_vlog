@@ -50,6 +50,7 @@ dependencies:
   flutter_colorpicker: ^1.1.0
   file_picker: ^8.3.7
   audioplayers: ^6.1.0
+  google_mobile_ads: ^5.3.1
 
 dev_dependencies:
   flutter_test:
