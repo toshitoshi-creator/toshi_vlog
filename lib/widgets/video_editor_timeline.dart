@@ -111,7 +111,6 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
   bool? _draggingClipLeftEdge;
   Duration _gestureStartOffset = Duration.zero;
   Duration _gestureStartDuration = Duration.zero;
-  double _accumulatedDeltaSeconds = 0;
   Duration? _liveClipStartOffset;
   Duration? _liveClipDuration;
   double _reorderLiveDx = 0;
@@ -301,15 +300,17 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
       _draggingClipLeftEdge = leftEdge;
       _gestureStartOffset = segment.startOffset;
       _gestureStartDuration = segment.duration;
-      _accumulatedDeltaSeconds = 0;
       _liveClipStartOffset = segment.startOffset;
       _liveClipDuration = segment.duration;
     });
   }
 
-  void _updateClipTrim(int index, double deltaDx) {
-    _accumulatedDeltaSeconds += deltaDx / _pixelsPerSecond;
-    final deltaMs = (_accumulatedDeltaSeconds * 1000).round();
+  /// [totalDx] is the cumulative horizontal offset since the long-press was
+  /// recognized (LongPressMoveUpdateDetails.offsetFromOrigin), not a
+  /// per-frame delta, so it's applied directly to the gesture's starting
+  /// values rather than accumulated (mirrors [_updateCaptionDrag]).
+  void _updateClipTrim(int index, double totalDx) {
+    final deltaMs = ((totalDx / _pixelsPerSecond) * 1000).round();
     const minDuration = Duration(milliseconds: 200);
     final sourceMax = _selectedClipSourceDuration ?? _gestureStartDuration;
 
@@ -797,10 +798,11 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
       alignment: alignment,
       child: GestureDetector(
         behavior: HitTestBehavior.opaque,
-        onPanStart: (_) => _beginClipTrim(index, leftEdge: leftEdge),
-        onPanUpdate: (details) => _updateClipTrim(index, details.delta.dx),
-        onPanEnd: (_) => _endClipTrim(index),
-        onPanCancel: _cancelClipTrim,
+        onLongPressStart: (_) => _beginClipTrim(index, leftEdge: leftEdge),
+        onLongPressMoveUpdate: (details) =>
+            _updateClipTrim(index, details.offsetFromOrigin.dx),
+        onLongPressEnd: (_) => _endClipTrim(index),
+        onLongPressCancel: _cancelClipTrim,
         child: Container(
           width: _handleWidth,
           color: Colors.black45,
