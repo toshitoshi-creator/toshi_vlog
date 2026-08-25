@@ -3,6 +3,7 @@ import 'dart:math';
 
 import 'package:flutter/material.dart';
 import 'package:image_picker/image_picker.dart';
+import 'package:intl/intl.dart' show DateFormat;
 import 'package:video_player/video_player.dart';
 
 import '../models/app_font.dart';
@@ -13,6 +14,7 @@ import '../models/rewarded_ad_service.dart';
 import '../models/sound_library.dart';
 import '../models/subscription_service.dart';
 import '../models/text_overlay.dart';
+import '../models/video_item.dart';
 import '../models/video_library.dart';
 import '../utils/download_video.dart';
 import '../utils/text_overlay_renderer.dart';
@@ -21,6 +23,7 @@ import '../widgets/date_template_sheet.dart';
 import '../widgets/export_settings_sheet.dart';
 import '../widgets/text_overlay_form_sheet.dart';
 import '../widgets/video_editor_timeline.dart';
+import '../widgets/video_thumbnail.dart';
 import 'clip_framing_screen.dart';
 import 'paywall_screen.dart';
 import 'sound_library_screen.dart';
@@ -256,6 +259,40 @@ class _EditScreenState extends State<EditScreen> {
     final picked = await picker.pickVideo(source: ImageSource.gallery);
     if (picked == null) return;
     await _activeReel.addClip(File(picked.path));
+  }
+
+  /// Entry point for the timeline's メディア icon — appends a clip picked
+  /// from the videos already recorded in the app (メディア tab), rather
+  /// than the device's whole photo library.
+  Future<void> _handleAddClipFromMedia() async {
+    final videos = widget.videoLibrary.videos;
+    if (videos.isEmpty) {
+      ScaffoldMessenger.of(
+        context,
+      ).showSnackBar(const SnackBar(content: Text('アプリ内に動画がありません')));
+      return;
+    }
+    final selected = await showModalBottomSheet<VideoItem>(
+      context: context,
+      builder: (context) => SafeArea(
+        child: ListView.builder(
+          shrinkWrap: true,
+          itemCount: videos.length,
+          itemBuilder: (context, index) {
+            final video = videos[index];
+            return ListTile(
+              leading: VideoThumbnail(file: video.file),
+              title: Text(
+                DateFormat('yyyy/MM/dd HH:mm').format(video.createdAt),
+              ),
+              onTap: () => Navigator.of(context).pop(video),
+            );
+          },
+        ),
+      ),
+    );
+    if (selected == null) return;
+    await _activeReel.addClip(selected.file);
   }
 
   /// Entry point for the timeline's "+" button — lets the user choose
@@ -852,6 +889,7 @@ class _EditScreenState extends State<EditScreen> {
                   onCommitCaptionTiming: _handleCommitCaptionTiming,
                   onAddText: _handleAddTextPressed,
                   onAddClip: _handleAddClipFromGallery,
+                  onAddClipFromMedia: _handleAddClipFromMedia,
                   onEditFraming: _handleEditFraming,
                   onEditClipTiming: _handleEditClipTiming,
                   onDeselectAll: _handleDeselectAll,

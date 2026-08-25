@@ -30,6 +30,7 @@ class VideoEditorTimeline extends StatefulWidget {
     required this.onCommitCaptionTiming,
     required this.onAddText,
     required this.onAddClip,
+    required this.onAddClipFromMedia,
     required this.onEditFraming,
     required this.onEditClipTiming,
     required this.onDeselectAll,
@@ -72,6 +73,11 @@ class VideoEditorTimeline extends StatefulWidget {
   /// clip picked from the photo library, alongside whatever's already on
   /// the timeline.
   final VoidCallback onAddClip;
+
+  /// Fired by the toolbar's メディア icon — lets the user append a clip
+  /// picked from the videos already recorded in the app instead of the
+  /// device's whole photo library.
+  final VoidCallback onAddClipFromMedia;
 
   /// Opens the 画角編集 (framing) screen for the clip at this index —
   /// fired by the toolbar's crop/rotate icon, enabled only when a clip is
@@ -594,6 +600,12 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
                 icon: const Icon(Icons.video_call_outlined),
                 tooltip: 'カメラロールから追加',
                 onPressed: widget.onAddClip,
+                visualDensity: VisualDensity.compact,
+              ),
+              IconButton(
+                icon: const Icon(Icons.video_library_outlined),
+                tooltip: 'メディアから追加',
+                onPressed: widget.onAddClipFromMedia,
                 visualDensity: VisualDensity.compact,
               ),
               IconButton(
