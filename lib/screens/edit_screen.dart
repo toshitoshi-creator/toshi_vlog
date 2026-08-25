@@ -2,6 +2,7 @@ import 'dart:io';
 import 'dart:math';
 
 import 'package:flutter/material.dart';
+import 'package:image_picker/image_picker.dart';
 import 'package:video_player/video_player.dart';
 
 import '../models/app_font.dart';
@@ -245,6 +246,16 @@ class _EditScreenState extends State<EditScreen> {
   Future<void> _handleFormResult(TextOverlay overlay) async {
     final rendered = await renderTextOverlay(overlay, _activeReel);
     await _activeReel.upsertTextOverlay(rendered);
+  }
+
+  /// Entry point for the timeline's camera-roll icon — appends a clip
+  /// picked straight from the photo library, trimmed/added the same way a
+  /// freshly recorded clip is.
+  Future<void> _handleAddClipFromGallery() async {
+    final picker = ImagePicker();
+    final picked = await picker.pickVideo(source: ImageSource.gallery);
+    if (picked == null) return;
+    await _activeReel.addClip(File(picked.path));
   }
 
   /// Entry point for the timeline's "+" button — lets the user choose
@@ -840,6 +851,7 @@ class _EditScreenState extends State<EditScreen> {
                   onTapCaption: _editText,
                   onCommitCaptionTiming: _handleCommitCaptionTiming,
                   onAddText: _handleAddTextPressed,
+                  onAddClip: _handleAddClipFromGallery,
                   onEditFraming: _handleEditFraming,
                   onEditClipTiming: _handleEditClipTiming,
                   onDeselectAll: _handleDeselectAll,
