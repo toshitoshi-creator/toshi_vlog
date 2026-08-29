@@ -73,6 +73,13 @@ class HighlightReel extends ChangeNotifier {
   bool _includeOpening = false;
   static const minClipsForOpening = 4;
 
+  /// Cache for [_buildOpeningIfNeeded] — rebuilding it means re-encoding
+  /// one clip per segment, so it's skipped whenever nothing about the
+  /// segments (order, trim, framing) has actually changed since the last
+  /// [_recompose] (e.g. an unrelated caption/BGM/volume edit).
+  File? _cachedOpeningFile;
+  String? _cachedOpeningFingerprint;
+
   /// Whether 簡易編集's daily auto-clear (see [applyDailyAutoClear]) is
   /// allowed to skip clearing this reel. Only actually takes effect for a
   /// premium user — a lapsed subscription falls back to the default
@@ -1071,45 +1078,36 @@ class HighlightReel extends ChangeNotifier {
     await current.copy(previewOutput.path);
     _previewFile = previewOutput;
 
-    final renderedOverlays = _textOverlays
-        .where((o) => o.renderedImagePath != null)
-        .toList();
+    final renderedOverlays = <TextOverlay>[];
+    for (final overlay in _textOverlays) {
+      final path = overlay.renderedImagePath;
+      if (path != null && await File(path).exists()) {
+        renderedOverlays.add(overlay);
+      }
+    }
     if (renderedOverlays.isNotEmpty) {
       final totalSeconds =
           (await _probeDuration(current)).inMilliseconds / 1000;
-      var step = 0;
-      for (final overlay in renderedOverlays) {
-        final image = File(overlay.renderedImagePath!);
-        if (!await image.exists()) continue;
 
-        final clampedStart = overlay.startSeconds.clamp(0.0, totalSeconds);
-        final clampedEnd = overlay.endSeconds.clamp(0.0, totalSeconds);
+      // All captions are composited in one ffmpeg pass — one input per
+      // overlay image, chained through a single filter_complex graph —
+      // instead of one full video re-encode per caption. With N captions,
+      // re-encoding the whole video N times over (each pass re-encoding
+      // the previous pass's already-lossy output) made every single edit
+      // slower the more captions existed, and the repeated libx264 work
+      // was the main source of the app running hot.
+      final stepOutput = File('${highlightsDir.path}/text_overlays.mp4');
+      if (await stepOutput.exists()) {
+        await stepOutput.delete();
+      }
 
-        final stepOutput = File('${highlightsDir.path}/text_step_$step.mp4');
-        if (await stepOutput.exists()) {
-          await stepOutput.delete();
-        }
-
-        final width = overlay.renderedWidth ?? 0;
-        final height = overlay.renderedHeight ?? 0;
-        final px = (overlay.x * canvasWidth - width / 2).round();
-        final py = (overlay.y * canvasHeight - height / 2).round();
-
-        // The PNG overlay carries an alpha channel, which can leave the
-        // filter graph's output in a pixel format (e.g. yuva420p) that
-        // encodes "successfully" but that AVFoundation/video_player can't
-        // decode as anything but black. Force back to plain yuv420p before
-        // encoding, and pick the encoder/pixel format explicitly rather
-        // than relying on ffmpeg's implicit per-container defaults.
-        final filter =
-            "[0:v][1:v]overlay=x=$px:y=$py:enable='between(t\\,"
-            '${clampedStart.toStringAsFixed(2)}\\,'
-            "${clampedEnd.toStringAsFixed(2)})',format=yuv420p[outv]";
-
-        final session = await FFmpegKit.executeWithArguments([
-          '-y',
-          '-i',
-          current.path,
+      final inputArgs = <String>['-i', current.path];
+      final filterStages = <String>[];
+      var lastLabel = '0:v';
+      for (var i = 0; i < renderedOverlays.length; i++) {
+        final overlay = renderedOverlays[i];
+        final inputIndex = i + 1;
+        inputArgs.addAll([
           '-loop',
           '1',
           '-framerate',
@@ -1117,29 +1115,56 @@ class HighlightReel extends ChangeNotifier {
           '-t',
           totalSeconds.toStringAsFixed(2),
           '-i',
-          image.path,
-          '-filter_complex',
-          filter,
-          '-map',
-          '[outv]',
-          '-map',
-          '0:a?',
-          '-c:v',
-          'libx264',
-          '-pix_fmt',
-          'yuv420p',
-          '-preset',
-          'veryfast',
-          '-c:a',
-          'copy',
-          stepOutput.path,
+          File(overlay.renderedImagePath!).path,
         ]);
-        if (!ReturnCode.isSuccess(await session.getReturnCode())) {
-          throw Exception('ffmpeg text overlay failed');
-        }
-        current = stepOutput;
-        step++;
+
+        final clampedStart = overlay.startSeconds.clamp(0.0, totalSeconds);
+        final clampedEnd = overlay.endSeconds.clamp(0.0, totalSeconds);
+        final width = overlay.renderedWidth ?? 0;
+        final height = overlay.renderedHeight ?? 0;
+        final px = (overlay.x * canvasWidth - width / 2).round();
+        final py = (overlay.y * canvasHeight - height / 2).round();
+        final isLast = i == renderedOverlays.length - 1;
+        final outLabel = isLast ? 'outv' : 'tmp$i';
+
+        // The PNG overlay carries an alpha channel, which can leave the
+        // filter graph's output in a pixel format (e.g. yuva420p) that
+        // encodes "successfully" but that AVFoundation/video_player can't
+        // decode as anything but black. Force back to plain yuv420p on the
+        // final stage before encoding, rather than relying on ffmpeg's
+        // implicit per-container defaults.
+        filterStages.add(
+          "[$lastLabel][$inputIndex:v]overlay=x=$px:y=$py:enable='between(t\\,"
+          '${clampedStart.toStringAsFixed(2)}\\,'
+          "${clampedEnd.toStringAsFixed(2)})'"
+          "${isLast ? ',format=yuv420p' : ''}[$outLabel]",
+        );
+        lastLabel = outLabel;
       }
+
+      final session = await FFmpegKit.executeWithArguments([
+        '-y',
+        ...inputArgs,
+        '-filter_complex',
+        filterStages.join(';'),
+        '-map',
+        '[outv]',
+        '-map',
+        '0:a?',
+        '-c:v',
+        'libx264',
+        '-pix_fmt',
+        'yuv420p',
+        '-preset',
+        'veryfast',
+        '-c:a',
+        'copy',
+        stepOutput.path,
+      ]);
+      if (!ReturnCode.isSuccess(await session.getReturnCode())) {
+        throw Exception('ffmpeg text overlay failed');
+      }
+      current = stepOutput;
     }
 
     final opening = await _buildOpeningIfNeeded(highlightsDir);
@@ -1223,9 +1248,27 @@ class HighlightReel extends ChangeNotifier {
   /// *source* recording (not the already-trimmed highlight window), to be
   /// prepended before the main compiled video. Returns null if the opening
   /// is disabled, there aren't enough clips yet, or nothing could be built.
+  String _segmentsFingerprint() => _segments
+      .map(
+        (s) =>
+            '${s.id}:${s.startOffset.inMilliseconds}:'
+            '${s.duration.inMilliseconds}:${s.frameRotationDegrees}:'
+            '${s.frameScale}',
+      )
+      .join('|');
+
   Future<File?> _buildOpeningIfNeeded(Directory highlightsDir) async {
     if (!_includeOpening || _segments.length < minClipsForOpening) {
+      _cachedOpeningFile = null;
+      _cachedOpeningFingerprint = null;
       return null;
+    }
+    final fingerprint = _segmentsFingerprint();
+    final cached = _cachedOpeningFile;
+    if (_cachedOpeningFingerprint == fingerprint &&
+        cached != null &&
+        await cached.exists()) {
+      return cached;
     }
     const pieceDuration = Duration(seconds: 1);
     final pieceFiles = <File>[];
@@ -1287,6 +1330,8 @@ class HighlightReel extends ChangeNotifier {
     if (!ReturnCode.isSuccess(await session.getReturnCode())) {
       throw Exception('ffmpeg opening concat failed');
     }
+    _cachedOpeningFile = openingOutput;
+    _cachedOpeningFingerprint = fingerprint;
     return openingOutput;
   }
 
