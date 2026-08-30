@@ -33,6 +33,7 @@ class VideoEditorTimeline extends StatefulWidget {
     required this.onAddClipFromMedia,
     required this.onEditFraming,
     required this.onEditClipTiming,
+    required this.onDeleteClip,
     required this.onDeselectAll,
     required this.onCommitBgmTiming,
   });
@@ -88,6 +89,12 @@ class VideoEditorTimeline extends StatefulWidget {
   /// — fired by the toolbar's ruler icon, enabled only when a clip is
   /// selected.
   final ValueChanged<int> onEditClipTiming;
+
+  /// Deletes the clip at this index from the timeline — fired by the
+  /// toolbar's delete icon, enabled only when a clip is selected. Only
+  /// removes this project's trimmed copy; the source recording in メディア
+  /// is left alone (see [HighlightReel.removeAt]).
+  final ValueChanged<int> onDeleteClip;
 
   /// Fired when tapping empty space in the timeline (not a clip block or
   /// caption bar) — clears the caption selection the parent owns; clip
@@ -289,6 +296,19 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
     );
     if (!mounted || _selectedClipIndex != index) return;
     setState(() => _selectedClipSourceDuration = duration);
+  }
+
+  /// Deletes the selected clip from the timeline — the source recording in
+  /// メディア is untouched (see [HighlightReel.removeAt]), only this
+  /// project's trimmed copy of it goes away.
+  void _handleDeleteClip() {
+    final index = _selectedClipIndex;
+    if (index == null) return;
+    setState(() {
+      _selectedClipIndex = null;
+      _selectedClipSourceDuration = null;
+    });
+    widget.onDeleteClip(index);
   }
 
   /// Clears both clip and caption selection — fired when tapping empty
@@ -622,6 +642,14 @@ class _VideoEditorTimelineState extends State<VideoEditorTimeline> {
                 onPressed: _selectedClipIndex == null
                     ? null
                     : () => widget.onEditClipTiming(_selectedClipIndex!),
+                visualDensity: VisualDensity.compact,
+              ),
+              IconButton(
+                icon: const Icon(Icons.delete_outline),
+                tooltip: 'クリップを削除',
+                onPressed: _selectedClipIndex == null
+                    ? null
+                    : _handleDeleteClip,
                 visualDensity: VisualDensity.compact,
               ),
             ],

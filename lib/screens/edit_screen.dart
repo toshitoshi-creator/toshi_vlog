@@ -479,6 +479,34 @@ class _EditScreenState extends State<EditScreen> {
     );
   }
 
+  /// Removes clip [index] from this project's timeline only — the source
+  /// recording it was trimmed from stays in メディア untouched (see
+  /// [HighlightReel.removeAt]).
+  Future<void> _handleDeleteClip(int index) async {
+    final confirmed = await showDialog<bool>(
+      context: context,
+      builder: (context) => AlertDialog(
+        title: const Text('クリップを削除しますか?'),
+        content: const Text(
+          'タイムラインからこのクリップを削除します。元の動画はメディアに残ります。'
+          'この操作は取り消せません。',
+        ),
+        actions: [
+          TextButton(
+            onPressed: () => Navigator.of(context).pop(false),
+            child: const Text('キャンセル'),
+          ),
+          FilledButton(
+            onPressed: () => Navigator.of(context).pop(true),
+            child: const Text('削除'),
+          ),
+        ],
+      ),
+    );
+    if (confirmed != true) return;
+    await _activeReel.removeAt(index);
+  }
+
   void _beginGesture(TextOverlay overlay) {
     _activeOverlayId = overlay.id;
     _gestureStartFontSize = overlay.fontSize;
@@ -892,6 +920,7 @@ class _EditScreenState extends State<EditScreen> {
                   onAddClipFromMedia: _handleAddClipFromMedia,
                   onEditFraming: _handleEditFraming,
                   onEditClipTiming: _handleEditClipTiming,
+                  onDeleteClip: _handleDeleteClip,
                   onDeselectAll: _handleDeselectAll,
                   onCommitBgmTiming: (start, end) =>
                       reel.setBgmTiming(start, end),
