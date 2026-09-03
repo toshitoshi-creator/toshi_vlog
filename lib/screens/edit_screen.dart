@@ -1062,7 +1062,14 @@ class _EditScreenState extends State<EditScreen> {
         return Stack(
           children: [
             for (final overlay in _draftOverlays)
-              if (overlay.id == _selectedCaptionId ||
+              // The selected caption stays force-visible while paused so
+              // it can be dragged into position regardless of the
+              // playhead — but only while paused. During actual playback
+              // it must respect its own time window like every other
+              // caption, or it never disappears and visibly overlaps
+              // whatever plays after it (reported as captions showing
+              // "doubled" once a caption had been selected/edited).
+              if ((overlay.id == _selectedCaptionId && !value.isPlaying) ||
                   (seconds >= overlay.startSeconds &&
                       seconds <= overlay.endSeconds))
                 _buildOverlayWidget(overlay, previewWidth, previewHeight),
